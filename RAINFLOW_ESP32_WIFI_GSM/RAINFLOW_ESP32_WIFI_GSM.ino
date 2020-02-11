@@ -3,8 +3,8 @@
 #define TINY_GSM_MODEM_SIM800   // GSM/GPRS Module Model
 #define GSM_RX  17              // GSM/GPRS Module RX Pin
 #define GSM_TX  16              // GSM/GPRS Module TX Pin
-#define GPS_RX  34              // GSM/GPRS Module RX Pin
-#define GPS_TX  35              // GSM/GPRS Module TX Pin
+#define GPS_RX  35              // GSM/GPRS Module RX Pin
+#define GPS_TX  34              // GSM/GPRS Module TX Pin
 #define RGPIN 18                // Rain Guage Pin
 #define BATTMAXVOLT 4.2         // Maximum Battery Voltage
 #define MODE_WIFI               // Use Wifi for Data Telemetry
@@ -21,6 +21,7 @@
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
 #include <TinyGsmClient.h>
+#include <TaskScheduler.h>
 #include <TinyGPS++.h>
 #include <WiFi.h>
 #include "rainflow.h"
@@ -40,16 +41,20 @@ const char* APIKey  = "86ffc18d-8377";   // Change to API-Key
 WiFiClient client;
 TinyGPSPlus gps;
 HardwareSerial SerialGSM(1);
+HardwareSerial SerialGPS(1);
 RainFLOW rainflow;
+
+void publishData();
+
+Task publishDataScheduler(300000, TASK_FOREVER, &publishData);
+Scheduler runner;
 
 
 #ifdef MODE_GSM
-
-
 void connectGSM(int gsm_baud, int gsm_tx, int gsm_rx, const char* apn, const char* gprsUser, const char* gprsPass) {
-  SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);
+  SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);       // Initialise serial connection to GSM module
 
-  if (!modem.restart()) {
+  if (!modem.restart()) {                                     // Restarts GSM Modem
     DEBUG_PRINT("Failed to restart modem. Trying in 10s.");
     delay(3000);
     SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);
@@ -98,8 +103,8 @@ void connectWifi(const char* ssid, const char* password) {
     }
   }
   DEBUG_PRINT("Connected. My IP Address is: " + WiFi.localIP());
+  delay(1000);
 }
-
 #endif
 
 void attachRainGauge(int rainGaugePin) {
@@ -109,10 +114,12 @@ void attachRainGauge(int rainGaugePin) {
 }
 
 void tippingBucket() {
-  //this has not been calibrated as it will depend on your own printing dimensions
-  //as a rough guide though, this system has 15 tips per 100ml, over a radius of 5.72cm
-  //one tip is approx 6.67mL, or 6.67cmCubed. Area of catchment= pi*5.72*5.62=102.79cm Squared
-  //Rainfal per tip is 6.67mL/102.79=0.6489mL/tip
+  //  This has not been calibrated yet as it will depend on your printing dimensions.
+  //  As a rough guide, this rain gauge tips 15 times per 100 mL, over a radious of 5.72 cm
+  //  One tip is ~ 6.67mL or 6.67cm^3.
+  //  Catachment area = pi*r*r=102.79cm^2
+  //  Rainfall per tip = 6.67mL/102.79 = 0.6489mL/tip
+
   int tipInterval = 100; // 100ms
   if (millis() - lastDetectedTipMillis > tipInterval) {
     rainfallAmount += tipAmount;
@@ -122,25 +129,29 @@ void tippingBucket() {
 }
 
 void attachGPS() {
-  SerialGSM.begin(9600, SERIAL_8N1, GPS_TX, GPS_RX);
-  rainflow.connectServer(APIKey);
+  Serial.println("Attaching GPS. RX: " + String(GPS_RX) + "  TX: " + String(GPS_TX));
+  SerialGPS.begin(9600, SERIAL_8N1, GPS_TX, GPS_RX);
+  DEBUG_PRINT("Attaching GPS. RX: " + String(GPS_RX) + "  TX: " + String(GPS_TX));
 }
 
-void setup(){
+void setup() {
   Serial.begin(115200);
   Serial.println("System initialising");
   rainflow.rainflow(client);
-  //attachGPS();
+  attachGPS();
   attachRainGauge(RGPIN);
   connectWifi(ssid, password);
   rainflow.connectServer(APIKey);
+  runner.init();
+  runner.addTask(publishDataScheduler);
+  publishDataScheduler.enable();
 }
 
-void loop() {
+void getData() {
   rainflow.addData("APIKey",      APIKey);
-  while (SerialGSM.available() > 0) {
-    if (gps.encode(SerialGSM.read())) {
-      String Date = String(gps.date.month())+ "/" + String(gps.date.day()) + "/" + String(gps.date.year());
+  while (SerialGPS.available() > 0) {
+    if (gps.encode(SerialGPS.read())) {
+      String Date = String(gps.date.month()) + "/" + String(gps.date.day()) + "/" + String(gps.date.year());
       rainflow.addData("Date",        Date);
       String Time = String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second());
       rainflow.addData("Time",        Time);
@@ -149,12 +160,17 @@ void loop() {
       rainflow.addData("Altitude",    String(gps.altitude.meters()));
     }
   }
-  rainflow.addData("floodDepth",  APIKey);
+  rainflow.addData("floodDepth",  "0.00");
   rainflow.addData("rainfallAmt", String(rainfallAmount));
   rainflow.addData("battPercent", "N/A");
   rainflow.addData("battVoltage", "N.A");
-  rainflow.publishData(APIKey);
-    delay(10000);
+}
 
-  Serial.println("Test");
+void publishData() {
+  getData();
+  rainflow.publishData(APIKey);
+}
+
+void loop() {
+  runner.execute();
 }

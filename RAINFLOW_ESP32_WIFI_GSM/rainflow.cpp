@@ -3,6 +3,13 @@
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
 
+
+#ifdef DEBUG_MODE
+#define DEBUG_PRINT(x) Serial.println(x)
+#else
+#define DEBUG_PRINT(x) Serial.println(x)
+#endif
+
 PubSubClient rainflowMQTT;
 
 
@@ -10,8 +17,7 @@ PubSubClient rainflowMQTT;
 void RainFLOW::connectServer(const char* APIKey) {
   rainflowMQTT.setServer("test.mosquitto.org", 1883);
   rainflowMQTT.setCallback(rainflowCallback);
-  //  Serial.println("Connecting test.");
-  DEBUG_PRINT("Connecting to RainFLOW Server at ");
+  DEBUG_PRINT("Connecting to RainFLOW Server.");
   while (connectMqtt(APIKey) == false) continue;
 }
 
@@ -22,52 +28,39 @@ bool RainFLOW::connectMqtt(const char* APIKey) {
   }
   DEBUG_PRINT("Connected to server!");
   char topic[45];
-  strcpy(topic, "data/");
+  strcpy(topic, "device/");
   strcat(topic, APIKey);
-  rainflowMQTT.subscribe(topic);
-  return rainflowMQTT.connected();
+  rainflowMQTT.subscribe(topic);                  // Subscribe to device management channel
   DEBUG_PRINT("Subscribed to: " + String(topic));
-
-
+  return rainflowMQTT.connected();
 }
 
 
-void rainflowCallback(char* topic, byte* payload, unsigned int len) {
+void RainFLOW::rainflowCallback(char* topic, byte* payload, unsigned int len) {
   DEBUG_PRINT("Received message: ");
   Serial.write(payload, len);
 }
 
 void RainFLOW::addData(String topic, String payload) {
-  payloadData[topic] = payload;
+  payloadData[topic] = payload;                                             // Add payload to JSON variable
 }
 
 
 void RainFLOW::publishData(const char* APIKey) {
+  while (connectMqtt(APIKey) == false) continue;
   char topicBuffer[1024];
   String payloadBuffer;
   String topic;
   int len;
-  //
-  //  payloadData["API_Key"]            = APIKey;
-  //  payloadData["Date"]               = "";
-  //  payloadData["Time"]               = "";
-  //  payloadData["Latitude"]           = "14.5647";
-  //  payloadData["Longtitude"]         = "120.9932";
-  //  payloadData["Altitude"]           = "64";
-  //  payloadData["floodDepth"]         = "0";
-  //  payloadData["rainfallAmount"]     = rainfallAmount;
-  //  payloadData["batteryPercentage"]  = getBatteryPercent();
-  //  payloadData["batteryVoltage"]     = getBatteryVoltage();
-  //  serializeJson(payloadData, payloadBuffer);
 
   serializeJson(payloadData, payloadBuffer);
   topic =   "data/";
-  topic  +=  APIKey;
-  len       = strlen(payloadBuffer.c_str());
+  topic  +=  APIKey;                                                          // Append API Key to data
+  len       = strlen(payloadBuffer.c_str());                                  // Calculates Payload Size
 
-  rainflowMQTT.publish(topic.c_str(), payloadBuffer.c_str(), len);
-  DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payload));
-
+  rainflowMQTT.publish(topic.c_str(), payloadBuffer.c_str(), len);            // Publishes payload to server
+  DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
+  payloadData.clear();
 }
 
 
