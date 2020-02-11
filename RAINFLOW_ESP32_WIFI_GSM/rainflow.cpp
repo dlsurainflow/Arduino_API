@@ -36,7 +36,7 @@ bool RainFLOW::connectMqtt(const char* APIKey) {
 }
 
 
-void RainFLOW::rainflowCallback(char* topic, byte* payload, unsigned int len) {
+void rainflowCallback(char* topic, byte* payload, unsigned int len) {
   DEBUG_PRINT("Received message: ");
   Serial.write(payload, len);
 }
