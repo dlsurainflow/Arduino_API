@@ -42,7 +42,7 @@ const char user[] = "";
 const char pass[] = "";
 
 // RAFT Details
-const char* APIKey  = "861db3ff0-9c48-43ab-91b8-346b94e498ad   ";   // Change to API-Key
+const char* APIKey  = "solar/861db3ff0-9c48-43ab-91b8-346b94e498ad   ";   // Change to API-Key
 
 #ifdef MODE_WIFI
 WiFiClient client;
@@ -212,9 +212,9 @@ void getData() {
 
 
   rainflow.addData("SP1 Raw",  String(SP1CRaw));
-  rainflow.addData("SP1 ACS Voltage", String(SP1Voltage));
+  rainflow.addData("SP1 ACS Voltage", String(SP1CVoltage));
   rainflow.addData("SP1 Current",  String(SP1Current));
-  rainflow.addData("SP1 RAW",  String(SP1CRaw));
+  rainflow.addData("SP1 RAW",  String(SP1VRaw));
   rainflow.addData("SP1 Voltage", String(SP1Voltage));
   rainflow.addData("SP1 Power", String(SP1Power));
   rainflow.addData("SPR Raw",  String(SPRCRaw));
