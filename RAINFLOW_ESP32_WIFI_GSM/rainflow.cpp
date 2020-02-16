@@ -16,7 +16,7 @@ PubSubClient rainflowMQTT;
 
 void RainFLOW::connectServer(const char* APIKey) {
   rainflowMQTT.setServer("test.mosquitto.org", 1883);
-  rainflowMQTT.setCallback(rainflowCallback);
+  //rainflowMQTT.setCallback(rainflowCallback);
   DEBUG_PRINT("Connecting to RainFLOW Server.");
   while (connectMqtt(APIKey) == false) continue;
 }
@@ -36,7 +36,7 @@ bool RainFLOW::connectMqtt(const char* APIKey) {
 }
 
 
-void rainflowCallback(char* topic, byte* payload, unsigned int len) {
+void RainFLOW::rainflowCallback(char* topic, byte* payload, unsigned int len) {
   DEBUG_PRINT("Received message: ");
   Serial.write(payload, len);
 }

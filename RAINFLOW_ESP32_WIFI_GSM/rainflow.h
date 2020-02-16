@@ -26,6 +26,7 @@ class RainFLOW {
     bool connectMqtt(const char* APIKey);
     void addData(String topic, String payload);
     void publishData(const char* APIKey);
+    void rainflowCallback(char* topic, byte* payload, unsigned int len);
     void rainflow(Client& client);
 };
 void rainflowCallback(char* topic, byte * payload, unsigned int len);
