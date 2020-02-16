@@ -7,9 +7,10 @@
 #define GPS_TX  34              // GSM/GPRS Module TX Pin
 #define RGPIN 18                // Rain Guage Pin
 #define BATTMAXVOLT 4.2         // Maximum Battery Voltage
-#define MODE_WIFI               // Use Wifi for Data Telemetry
+//#define MODE_WIFI               // Use Wifi for Data Telemetry
+#define MODE_GSM                // Use GSM/GPRS for Data Telemetry
 #define DEBUG_MODE
-//#define MODE_GSM                // Use GSM/GPRS for Data Telemetry
+
 
 #ifdef DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.println(x)
@@ -35,29 +36,45 @@ double rainfallAmount   = 0;          // Total Amount of Rainfall
 double tipAmount        = 0.6489;     // Calibrated Tipping Amount
 unsigned long lastDetectedTipMillis;
 
-// RAFT Details
-const char* APIKey  = "86ffc18d-8377";   // Change to API-Key
+//Network details
+const char apn[]  = "smartlte";
+const char user[] = "";
+const char pass[] = "";
 
+// RAFT Details
+const char* APIKey  = "861db3ff0-9c48-43ab-91b8-346b94e498ad   ";   // Change to API-Key
+
+#ifdef MODE_WIFI
 WiFiClient client;
+#endif
+
+#ifdef MODE_GSM
+HardwareSerial serialGSM(1);
+TinyGsm modem(serialGSM);
+TinyGsmClient client(modem);
+#endif
+
+
 TinyGPSPlus gps;
-HardwareSerial SerialGSM(1);
+
 HardwareSerial SerialGPS(1);
 RainFLOW rainflow;
 
 void publishData();
 
-Task publishDataScheduler(300000, TASK_FOREVER, &publishData);
+//Task publishDataScheduler(300000, TASK_FOREVER, &publishData);
+Task publishDataScheduler(10000, TASK_FOREVER, &publishData);
 Scheduler runner;
 
 
 #ifdef MODE_GSM
 void connectGSM(int gsm_baud, int gsm_tx, int gsm_rx, const char* apn, const char* gprsUser, const char* gprsPass) {
-  SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);       // Initialise serial connection to GSM module
+  serialGSM.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);       // Initialise serial connection to GSM module
 
   if (!modem.restart()) {                                     // Restarts GSM Modem
     DEBUG_PRINT("Failed to restart modem. Trying in 10s.");
     delay(3000);
-    SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);
+    serialGSM.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);
     delay(10000);
     return;
   }
@@ -79,7 +96,7 @@ void connectGSM(int gsm_baud, int gsm_tx, int gsm_rx, const char* apn, const cha
 
   DEBUG_PRINT("IMEI:           " + String(modem.getIMEI()));
   DEBUG_PRINT("Operator:       " + String(modem.getOperator()));
-  DEBUG_PRINT("IP Addr:        " + modem.localIP());
+//  DEBUG_PRINT("IP Addr:        " + modem.localIP());
   DEBUG_PRINT("Signal Quality: " + String(modem.getSignalQuality()));
   DEBUG_PRINT("GSM Time:       " + String(modem.getGSMDateTime(DATE_TIME)));
   DEBUG_PRINT("GSM Date:       " + String(modem.getGSMDateTime(DATE_DATE)));
@@ -102,7 +119,9 @@ void connectWifi(const char* ssid, const char* password) {
       DEBUG_PRINT("Still attempting to connect...");
     }
   }
-  DEBUG_PRINT("Connected. My IP Address is: " + WiFi.localIP());
+  Serial.println("Im Here");
+  DEBUG_PRINT("Connected.");
+  //DEBUG_PRINT("Connected. My IP Address is: " + WiFi.localIP());
   delay(1000);
 }
 #endif
@@ -140,7 +159,8 @@ void setup() {
   rainflow.rainflow(client);
   attachGPS();
   attachRainGauge(RGPIN);
-  connectWifi(ssid, password);
+  //connectWifi(ssid, password);
+  connectGSM(9600, GSM_TX, GSM_RX, apn, user, pass);
   rainflow.connectServer(APIKey);
   runner.init();
   runner.addTask(publishDataScheduler);
