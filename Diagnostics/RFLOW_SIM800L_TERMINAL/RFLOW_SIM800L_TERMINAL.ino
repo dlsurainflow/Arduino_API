@@ -22,6 +22,7 @@ void setup()
   updateSerial();
   mySerial.println("AT+CREG?"); //Check whether it has registered in the network
   updateSerial();
+  mySerial.write(26);
 }
 
 void loop()

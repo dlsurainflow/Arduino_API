@@ -15,8 +15,8 @@ PubSubClient rainflowMQTT;
 
 
 void RainFLOW::connectServer(const char* APIKey) {
-  rainflowMQTT.setServer("test.mosquitto.org", 1883);
-  rainflowMQTT.setCallback(rainflowCallback);
+  rainflowMQTT.setServer("192.168.1.9", 1883);
+//  rainflowMQTT.setCallback(rainflowCallback);
   DEBUG_PRINT("Connecting to RainFLOW Server.");
   while (connectMqtt(APIKey) == false) continue;
 }
@@ -28,7 +28,7 @@ bool RainFLOW::connectMqtt(const char* APIKey) {
   }
   DEBUG_PRINT("Connected to server!");
   char topic[45];
-  strcpy(topic, "device/");
+  strcpy(topic, "rainflow/device/");
   strcat(topic, APIKey);
   rainflowMQTT.subscribe(topic);                  // Subscribe to device management channel
   DEBUG_PRINT("Subscribed to: " + String(topic));

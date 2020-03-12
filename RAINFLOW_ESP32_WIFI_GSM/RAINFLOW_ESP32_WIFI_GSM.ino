@@ -1,84 +1,112 @@
-// Definitions
-#define MICRO_BAUD_RATE 115200  // Microcontroller Baud Rate
+//  -- RAFT DEFINTIONS
+#define MICRO_BAUD_RATE 115200  // Microcontroller Serial Port Baud Rate
+#define BATTMAXVOLT 4.2         // Maximum Battery Voltage
+#define BATTMINVOLT 3.2         // Minimum Battery Voltage
+#define BATTERYPIN 33           // BATTERY PIN
+#define BATTERYRATIO 0.71825
+#define RGPIN 21                // Rain Guage Pin
+#define uS_TO_S_FACTOR 1000000  // Conversion factor for micro seconds to seconds */
+//#define MODEM_WIFI              // Use Wifi for Data Telemetry
+#define MODEM_GSM               // Use GSM/GPRS for Data Telemetry
+#define DEBUG_MODE              // DEBUG MODE ON
+// -- GSM DEFINITIONS
 #define TINY_GSM_MODEM_SIM800   // GSM/GPRS Module Model
 #define GSM_RX  17              // GSM/GPRS Module RX Pin
 #define GSM_TX  16              // GSM/GPRS Module TX Pin
+// -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
 #define US_RX 25                // Ultrasonic Module RX Pin
 #define US_TX 26                // Ultrasonic Module TX 
-#define US_MAXHEIGHT 400           // Ultrasonic Max Height (cm)
+#define US_MAXHEIGHT 400        // Ultrasonic Max Height (cm)
+// -- GPS MODULE DEFINITIONS
 #define GPS_RX  34              // GSM/GPRS Module RX Pin
 #define GPS_TX  35              // GSM/GPRS Module TX Pin
-#define RGPIN 18                // Rain Guage Pin
-#define BATTMAXVOLT 4.2         // Maximum Battery Voltage
-//#define MODE_WIFI               // Use Wifi for Data Telemetry
-#define DEBUG_MODE
-#define MODE_GSM                // Use GSM/GPRS for Data Telemetry
-#define Serial_GPS Serial1
+// #define Serial_GPS Serial1
 
-#ifdef DEBUG_MODE
-#define DEBUG_PRINT(x) Serial.println(x)
-#else
-#define DEBUG_PRINT(x)
+
+#include <HardwareSerial.h>
+#include <TaskScheduler.h>
+#include <ArduinoJson.h>
+//#include <TinyGPS++.h>
+#include <Smoothed.h>
+//#include <NewPing.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <Time.h>
+#include "rainflow.h"
+#ifdef MODEM_GSM
+#include <TinyGsmClient.h>
+#endif
+#ifdef MODEM_WIFI
+#include <WiFi.h>
 #endif
 
-
-#include <ArduinoJson.h>
-#include <HardwareSerial.h>
-#include <TinyGsmClient.h>
-#include <TaskScheduler.h>
-#include <TinyGPS++.h>
-#include <Time.h>
-#include <NewPing.h>
-#include <WiFi.h>
-#include "rainflow.h"
-
-
-
 //WiFi Details
-const char* ssid                  = "myWiFi";
-const char* password              = "accessingwifi";
-const char* serverAddr            = "test.mosquitto.org";   //REMOVE ENTRY ONCE SERVER IS ESTABLISHED
+const char* ssid                  = "Hidden Network";
+const char* password              = "mmbmh15464";
+
+//GSM Details
 const char* apn = "smartlte";
 const char* gprsUser = "";
 const char* gprsPass = "";
-const short unsigned serverPort   = 1883;
-double rainfallAmount   = 0;          // Total Amount of Rainfall
-double tipAmount        = 0.6489;     // Calibrated Tipping Amount
-double setHeight = 0;                 //Set original Height
-double setDepth = 0;                  //Water level
-unsigned long lastDetectedTipMillis;
 
-int incomingByte =0;
-long currentmillis=0;
+// Rain Gauge Variables
+float rainfallAmount   = 0;          // Total Amount of Rainfall
+float tipAmount        = 0.6489;     // Calibrated Tipping Amount
+unsigned long lastDetectedTipMillis; // Time of Last Rain Guage Tip
+
+// Ultrasonic Sensor Variables
+float raftHeight = 0;                // Set original Height
+//float floodDepth = 0;                // Water level
 
 // RAFT Details
-const char* APIKey  = "48d619bb-6db4-45c4-af20-cd3f2719517e";  // Change to API-Key
+const char* APIKey  = "48d619bb-6db4-45c4";  // Change to API-Key
 
-//WiFiClient client;
-HardwareSerial SerialAT(1);
-TinyGsm modem(SerialAT);
+
+int incomingByte = 0;
+long currentmillis = 0;
+RTC_DATA_ATTR int bootCount = 0;
+
+int test = 0;
+
+
+#ifdef MODEM_WIFI
+WiFiClient client;
+#endif
+
+#ifdef MODEM_GSM
+HardwareSerial SerialGSM(1);
+TinyGsm modem(SerialGSM);
 TinyGsmClient client(modem);
+#endif
 
-TinyGPSPlus gps;
-
-HardwareSerial SerialGPS(1);
 RainFLOW rainflow;
-NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
 
 void publishData();
+void modeCheck();
 
-Task publishDataScheduler(300000, TASK_FOREVER, &publishData);
-Scheduler runner;
+TinyGPSPlus gps;
+HardwareSerial SerialGPS(1);
+NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
+//Task publishDataScheduler(60e3, TASK_FOREVER, &publishData);    // Every 1 minute 60seconds * 1000
+//Task checkMode(180e4, TASK_FOREVER, &modeCheck);                // Every 30 minutes 
 
+Task publishDataScheduler(60000, TASK_FOREVER, &publishData);
+Task checkMode(30e4, TASK_FOREVER, &modeCheck);
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+Smoothed<float> waterDepthSensor;
+Scheduler Runner;
 
-#ifdef MODE_GSM
+#ifdef MODEM_GSM
 void connectGSM(int gsm_baud, int gsm_tx, int gsm_rx, const char* apn, const char* gprsUser, const char* gprsPass) {
-  SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);       // Initialise serial connection to GSM module
+  SerialGSM.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);       // Initialise serial connection to GSM module
+  DEBUG_PRINT("Initialising GSM.");
+  DEBUG_PRINT("BAUD: " + String(gsm_baud) + "\tTX" + String(gsm_tx) + "\tRX" + String(gsm_rx));
   DEBUG_PRINT("Initialising GSM.");
   while (!modem.restart()) {                                    // Restarts GSM Modem
     DEBUG_PRINT("Failed to restart modem. Trying in 10s.");
     delay(1000);
-    SerialAT.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);
+    SerialGSM.begin(gsm_baud, SERIAL_8N1, gsm_tx, gsm_rx);
     delay(4000);
   }
 
@@ -86,9 +114,16 @@ void connectGSM(int gsm_baud, int gsm_tx, int gsm_rx, const char* apn, const cha
   DEBUG_PRINT("Modem Info: " + modem.getModemInfo());
 
   //Connect to GPRS
+  gprsConnect();
+
+}
+
+void gprsConnect() {
+  DEBUG_PRINT("Connecting to GPRS.");
   while (!modem.gprsConnect(apn, gprsUser, gprsPass)) {
     DEBUG_PRINT("Connecting to " + String(apn));
-    delay(10000);
+    //    delay(10000);
+    delay(5000);
   }
 
   if (modem.isGprsConnected()) {
@@ -99,19 +134,36 @@ void connectGSM(int gsm_baud, int gsm_tx, int gsm_rx, const char* apn, const cha
 
   DEBUG_PRINT("IMEI:           " + String(modem.getIMEI()));
   DEBUG_PRINT("Operator:       " + String(modem.getOperator()));
-  DEBUG_PRINT("IP Addr:        " + modem.localIP());
   DEBUG_PRINT("Signal Quality: " + String(modem.getSignalQuality()));
-  DEBUG_PRINT("GSM Time:       " + String(modem.getGSMDateTime(DATE_TIME)));
   DEBUG_PRINT("GSM Date:       " + String(modem.getGSMDateTime(DATE_DATE)));
+  DEBUG_PRINT("GSM Time:       " + String(modem.getGSMDateTime(DATE_TIME)));
+}
+
+void sleepGSM() {
+  DEBUG_PRINT("Sleeping GSM.");
+  SerialGSM.println("AT+CSCLK=2");
+}
+
+void wakeupGSM() {
+  DEBUG_PRINT("Waking Up GSM.");
+  SerialGSM.println("AT");
+  delay(500);
+  SerialGSM.println("AT+CSCLK=0");
 }
 #endif
 
-#ifdef MODE_WIFI
+#ifdef MODEM_WIFI
 void connectWifi(const char* ssid, const char* password) {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   DEBUG_PRINT("Connecting to " + String(ssid));
 
+  wifiConnect();
+  //DEBUG_PRINT("Connected. My IP Address is: " + WiFi.localIP());
+  delay(1000);
+}
+
+void wifiConnect() {
   uint8_t i = 0;
   while (WiFi.status() != WL_CONNECTED) {
     DEBUG_PRINT("Attempting to connect..."        );
@@ -122,13 +174,92 @@ void connectWifi(const char* ssid, const char* password) {
       DEBUG_PRINT("Still attempting to connect...");
     }
   }
-  //DEBUG_PRINT("Connected. My IP Address is: " + WiFi.localIP());
-  delay(1000);
+}
+
+void printLocalTime() {
+  String formattedDate = timeClient.getFormattedDate();
+  Serial.println(formattedDate);
 }
 #endif
 
+void modeCheck() {
+  float minFloodDepth = 10;
+  unsigned long lastTipTime = 1.8e6;
+    if ((getDepth() < minFloodDepth) && (lastDetectedTipMillis >= lastTipTime)) {
+      DEBUG_PRINT("Mode: Standby");
+      mode_Standby();
+    }
+    else if (((getDepth() >= minFloodDepth) && (lastDetectedTipMillis < lastTipTime)) && (getBatteryLevel() > BATTMINVOLT)) {
+      DEBUG_PRINT("Mode: Continuous Monitoring");
+      mode_ContinuousMonitoring();
+    }
+    else if (((getDepth() >= minFloodDepth) && (lastDetectedTipMillis < lastTipTime)) && (getBatteryLevel() <= BATTMINVOLT)) {
+      DEBUG_PRINT("Mode: Battery Saver");
+      mode_BatterySaver();
+    }
+  // mode_Standby(); // Force to standby 
+}
+
+void mode_Standby() {
+  DEBUG_PRINT("Standby Mode.");
+  int minutesToSleep = 1;
+  publishDataScheduler.disable();
+  publishData();
+  sleep(minutesToSleep * 60);
+  modeCheck();
+}
+
+void mode_ContinuousMonitoring() {
+  DEBUG_PRINT("Continous Monitoring Mode.");
+  if (!publishDataScheduler.isEnabled()) {
+    publishDataScheduler.enable();
+  }
+  if (!checkMode.isEnabled()) {
+    checkMode.enable();
+  }
+  fade();
+  loop();
+}
+
+void mode_BatterySaver() {
+  DEBUG_PRINT("Battery Saver Mode.");
+  int minutesToSleep = 2;
+  publishDataScheduler.disable();
+
+  publishData();
+  sleep(minutesToSleep * 60);
+  modeCheck();
+}
+
+void sleep(int time_to_sleep) {
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_21, 0);
+  esp_sleep_enable_timer_wakeup(time_to_sleep * uS_TO_S_FACTOR);
+  DEBUG_PRINT("Sleeping for " + String(time_to_sleep) + " Seconds");
+
+  delay(100);
+  Serial.flush();
+  esp_light_sleep_start();
+ 
+  print_wakeup_reason();
+}
+
+void print_wakeup_reason() {
+  esp_sleep_wakeup_cause_t wakeup_reason;
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch (wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0  : DEBUG_PRINT("Wakeup caused by external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1  : DEBUG_PRINT("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER : DEBUG_PRINT("Wakeup caused by timer"); break;
+    default :
+      DEBUG_PRINT("Wakeup was not caused by deep sleep:");
+      DEBUG_PRINT(String(wakeup_reason));
+      break;
+  }
+}
+
 void attachRainGauge(int rainGaugePin) {
-  Serial.println("Attaching Raing Gauge to pin : " + String(rainGaugePin));
+  DEBUG_PRINT("Rain Gauge attached to pin: " + String(rainGaugePin));
   pinMode(rainGaugePin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(rainGaugePin), tippingBucket, FALLING);
 }
@@ -149,17 +280,17 @@ void tippingBucket() {
 }
 
 void attachGPS() {
-  Serial.println("Attaching GPS. RX: " + String(GPS_RX) + "  TX: " + String(GPS_TX));
   SerialGPS.begin(9600, SERIAL_8N1, GPS_TX, GPS_RX);
-  DEBUG_PRINT("Attaching GPS. RX: " + String(GPS_RX) + "  TX: " + String(GPS_TX));
+  DEBUG_PRINT("Attached GPS @ RX: " + String(GPS_RX) + "  TX: " + String(GPS_TX));
 }
 
 void getGPS() {
   while (SerialGPS.available() > 0) {
     if (gps.encode(SerialGPS.read())) {
       String Date = String(gps.date.month()) + " / " + String(gps.date.day()) + " / " + String(gps.date.year());
-      rainflow.addData("Date",        Date);
       String Time = String(gps.time.hour()) + ": " + String(gps.time.minute()) + ": " + String(gps.time.second());
+
+      rainflow.addData("Date",        Date);
       rainflow.addData("Time",        Time);
       rainflow.addData("Latitude",    String(gps.location.lat()));
       rainflow.addData("Longitude",   String(gps.location.lng()));
@@ -169,101 +300,162 @@ void getGPS() {
 }
 
 void getHeight() {
-  setHeight = sonar.ping_cm();
-  while (setHeight = 0.00) {
-    setHeight = sonar.ping_cm();
+  float sample = 0.00, raw = 0.00;
+  int sampleRate = 50;
+
+  for (int i = 0; i < sampleRate;) {
+    float sensorValue = sonar.ping_cm();
+    if (sensorValue != 0.00) {
+      waterDepthSensor.add(sensorValue);
+      sample = waterDepthSensor.get();
+      raw = raw + sample;
+      i++;
+    }
+    delay(5);
   }
-  Serial.print("Set Height: ");//to ground
-  Serial.print(String(setHeight)); // Convert ping time to distance and print result (0 = outside set distance range, no ping echo)
-  Serial.print("\nerror..");
-  setHeight = sonar.ping_cm();
+  raftHeight = raw / sampleRate;
+  DEBUG_PRINT("RAFT Height: " + String(raftHeight));
+  waterDepthSensor.clear();
 }
 
-void getDepth() {
-  setDepth = sonar.ping_cm();
-  if (setDepth != 0.00) {
-    Serial.println("Measured Distance: " + String(setDepth));
-    setDepth = setHeight - setDepth;
-    Serial.print("Depth: " + String(setDepth));
-  } else {
+float getDepth() {
+  float sensorValue, raw = 0.00, sample = 0.00, avg = 0.00;
+  int sampleRate = 50;
+  for (int i = 0; i < sampleRate;) {
+    sensorValue = sonar.ping_cm();
+    if (sensorValue != 0.00) {
+      waterDepthSensor.add(sensorValue);
+      sample = waterDepthSensor.get();
+      raw = raw + sample;
+      i++;
+    }
+  }
+  avg = raw / sampleRate;
+  float floodDepth = raftHeight - avg;
+  DEBUG_PRINT("Flood Depth: " + String(floodDepth));
+  waterDepthSensor.clear();
+
+  return floodDepth;
+}
+
+float getBatteryLevel() {
+  double voltage = getBatteryVoltage();
+  if (voltage <= BATTMINVOLT) {
+    return 0.00;
+  }
+  else if (voltage > BATTMAXVOLT) {
+    return 100.00;
+  }
+  else {
+    float batteryLevel = ((getBatteryVoltage() - BATTMINVOLT) / (BATTMAXVOLT - BATTMINVOLT)) * 100.00;
+    return batteryLevel;
   }
 }
 
+double getBatteryVoltage() {
+  int sampleRate = 50;
+  double sum = 0;
+  for (int j = 0; j < sampleRate; j++) {
+    sum += ReadVoltage(BATTERYPIN) / BATTERYRATIO;
+    
+    delay(5);
+  }
+  double voltage = sum / sampleRate;
+  return voltage;
+}
 
+double ReadVoltage(byte pin) {
+  double reading = analogRead(pin); // Reference voltage is 3v3 so maximum reading is 3v3 = 4095 in range 0 to 4095
+  if (reading < 1 || reading > 4095) return 0;
+  return -0.000000000000016 * pow(reading, 4) + 0.000000000118171 * pow(reading, 3) - 0.000000301211691 * pow(reading, 2) + 0.001109019271794 * reading + 0.034143524634089;
+  delay(5);
+}
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println("System initialising");
-  Serial.println("'Project Uptime");
-  rainflow.rainflow(client);
-  attachGPS();
-  attachRainGauge(RGPIN);
-  //connectWifi(ssid, password);
-  connectGSM(9600, GSM_TX, GSM_RX, apn, gprsUser, gprsPass) ;
-  rainflow.connectServer(APIKey);
-  runner.init();
-  runner.addTask(publishDataScheduler);
-  publishDataScheduler.enable();
+String uptime() {
+  long days = 0, hours = 0, mins = 0, secs = 0;
+  //secs = currentmillis / 1000;    // Convert milliseconds to seconds
+  secs = millis() / 1000;           // Convert milliseconds to seconds
+  mins = secs / 60;                 // Convert seconds to minutes
+  hours = mins / 60;                // Convert minutes to hours
+  days = hours / 24;                // Convert hours to days
+  secs = secs - (mins * 60);        // Subtract the coverted seconds to minutes in order to display 59 secs max
+  mins = mins - (hours * 60);       // Subtract the coverted minutes to hours in order to display 59 minutes max
+  hours = hours - (days * 24);      // Subtract the coverted hours to days in order to display 23 hours max
+
+  String uptimeBuffer = String(days) + ":" + String(hours) + ":" + String(mins) + ":" + String(secs);
+  return uptimeBuffer;
 }
 
 void getData() {
-  rainflow.addData("APIKey",      APIKey);
-  rainflow.addData("floodDepth",  String(setDepth));
+#ifdef MODEM_WIFI
+  timeClient.forceUpdate();
+  String formattedDate = timeClient.getFormattedDate();
+  int splitT = formattedDate.indexOf("T");
+  String dayStamp = formattedDate.substring(0, splitT);
+  String timeStamp = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
+  rainflow.addData("Date",              dayStamp);
+  rainflow.addData("Time",              timeStamp);
+#endif
+#ifdef MODEM_GSM
+  rainflow.addData("Date",              String(modem.getGSMDateTime(DATE_DATE)));
+  rainflow.addData("Time",              String(modem.getGSMDateTime(DATE_TIME)));
+#endif
+  //rainflow.addData("floodDepth",  String(getDepth()));
   rainflow.addData("rainfallAmt", String(rainfallAmount));
-  rainflow.addData("battPercent", "N / A");
-  rainflow.addData("battVoltage", "N.A");
-}   
+  rainflow.addData("battLevel",   String(getBatteryLevel()));
+  rainflow.addData("battVoltage", String(getBatteryVoltage()));
+  rainflow.addData("rawBattVolt", String(ReadVoltage(BATTERYPIN)));
+  rainflow.addData("Uptime",      uptime());
+}
 
 void publishData() {
   getData();
+#ifdef MODEM_WIFI
+  connectWifi(ssid, password);
+#endif
+#ifdef MODEM_GSM
+  gprsConnect();
+#endif
   rainflow.publishData(APIKey);
+  fade();
 }
 
-void SerialCheck () {
-  if (Serial.available() > 0) {
-    incomingByte = Serial.read();
-    {
-      if (incomingByte == 63) // if ? received then answer with data
-      {
-        currentmillis = millis(); // get the  current milliseconds from arduino
-        // report milliseconds
-        Serial.print("Total milliseconds running: ");
-        Serial.println(currentmillis);
-        uptime(); //call conversion function to display human readable time
-      }
-    }
-  }
+
+void fade() {
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(50);
+  digitalWrite(LED_BUILTIN, LOW);
 }
-//######################################## SERIALCHECK ^^^^  #################################
-//############################################ UPTIME vvvvv  #################################
-void uptime()
-{
-  long days = 0;
-  long hours = 0;
-  long mins = 0;
-  long secs = 0;
-  secs = currentmillis / 1000; //convect milliseconds to seconds
-  mins = secs / 60; //convert seconds to minutes
-  hours = mins / 60; //convert minutes to hours
-  days = hours / 24; //convert hours to days
-  secs = secs - (mins * 60); //subtract the coverted seconds to minutes in order to display 59 secs max
-  mins = mins - (hours * 60); //subtract the coverted minutes to hours in order to display 59 minutes max
-  hours = hours - (days * 24); //subtract the coverted hours to days in order to display 23 hours max
-  //Display results
-  Serial.println("Running Time");
-  Serial.println("------------");
-  if (days > 0) // days will displayed only if value is greater than zero
-  {
-    Serial.print(days);
-    Serial.print(" days and :");
-  }
-  Serial.print(hours);
-  Serial.print(":");
-  Serial.print(mins);
-  Serial.print(":");
-  Serial.println(secs);
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  DEBUG_PRINT("System initialising");
+
+  //  pinMode(BATTERYPIN, INPUT);
+  //  attachGPS();
+  attachRainGauge(RGPIN);
+  pinMode(LED_BUILTIN, OUTPUT);
+
+#ifdef MODEM_WIFI
+  connectWifi(ssid, password);
+  timeClient.begin();
+  timeClient.setTimeOffset(28800);
+  timeClient.forceUpdate();
+  printLocalTime();
+#endif
+#ifdef MODEM_GSM
+  connectGSM(9600, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
+#endif
+  rainflow.rainflow(client);
+  rainflow.connectServer(APIKey);
+  Runner.init();
+  Runner.addTask(publishDataScheduler);
+  Runner.addTask(checkMode);
+  checkMode.enable();
+  modeCheck();
 }
 
 void loop() {
-  runner.execute();
+  Runner.execute();
 }
