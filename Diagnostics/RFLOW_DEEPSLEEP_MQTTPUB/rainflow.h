@@ -18,20 +18,18 @@ class RainFLOW {
 
     PubSubClient rainflowMQTT;    // Instance Creation of MQTT Client
     DynamicJsonDocument payloadData;
-    
 
   public:
-    RainFLOW() : payloadData(1024) {}   //JSON Containing Array
-    JsonObject payload_Data = payloadData.createNestedObject("data");
-    void connectServer(const char* clientID, const char* username, const char* password);
-    bool connectMqtt(const char* clientID, const char* username, const char* password);
-    void addData(const char* dataName, String dataPayload, String dataTime);
-    void publishData(const char* clientID, const char* username, const char* password, const char* streamID);
+
+    RainFLOW() : payloadData(1024) {}
+    void connectServer(const char* APIKey);
+    bool connectMqtt(const char* APIKey);
+    void addData(String topic, String payload);
+    void publishData(const char* APIKey);
     void rainflowCallback(char* topic, byte* payload, unsigned int len);
     void rainflow(Client& client);
-
-
 };
 void rainflowCallback(char* topic, byte * payload, unsigned int len);
+
 
 #endif

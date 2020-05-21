@@ -29,7 +29,6 @@
 #include <ArduinoJson.h>
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  300        /* Time ESP32 will go to sleep (in seconds) */
-//#define TIME_TO_SLEEP  60        /* Time ESP32 will go to sleep (in seconds) */
 
 RTC_DATA_ATTR int bootCount = 0;
 
@@ -40,8 +39,8 @@ const char* password              = "mmbmh15464";
 
 
 // RAFT Details
-//const char* APIKey  = "1429fedd-4956-4187-95aa";   // Change to API-Key
-const char* APIKey  = "861db3ff0-9c48-43ab-91b8";
+const char* APIKey  = "1429fedd-4956-4187-95ab";   // Change to API-Key
+//const char* APIKey  = "861db3ff0-9c48-43ab-91b8";
 
 
 
@@ -109,19 +108,6 @@ void connectWifi(const char* ssid, const char* password) {
   digitalWrite(LED, LOW);
 }
 
-int32_t getRSSI(const char* target_ssid) {
-  byte available_networks = WiFi.scanNetworks();
-
-  for (int network = 0; network < available_networks; network++) {
-    if (strcmp(WiFi.SSID(network).c_str(), target_ssid) == 0) {
-      return WiFi.RSSI(network);
-    }
-  }
-  return 0;
-}
-
-
-
 float getBatteryLevel() {
   double voltage = getBatteryVoltage();
   if (voltage <= BATTMINVOLT) {
@@ -180,16 +166,22 @@ void getData() {
   rainflow.addData("Date",              dayStamp);
   rainflow.addData("Time",              timeStamp);
   rainflow.addData("Uptime",            uptime());
-  rainflow.addData("SP1 Current",       doc["SP1 Current"]);
-  rainflow.addData("SP1 Voltage",       doc["SP1 Voltage"]);
-  rainflow.addData("SP1 Power",         doc["SP1 Power"]);
-  rainflow.addData("SPR Current",       doc["SPR Current"]);
-  rainflow.addData("BattLevelNano",     doc["BattLevelNano"]);
-  rainflow.addData("BattVoltageNano",   doc["BattVoltageNano"]);
-  rainflow.addData("BattLevelESP",        String(getBatteryLevel()));
-  rainflow.addData("BattVoltageESP",      String(getBatteryVoltage()));
-  rainflow.addData("WiFiRSSI",            String(getRSSI(ssid)));
-  rainflow.addData("BootCount",           String(bootCount));
+  rainflow.addData("Hi! ",       "Hello");
+  rainflow.addData("BootCount",       String(bootCount));
+  rainflow.addData("BootCount1",       String(bootCount*1));
+  rainflow.addData("BootCount2",       String(bootCount*2));
+  rainflow.addData("BootCount3",       String(bootCount*3));
+  rainflow.addData("BootCount4",       String(bootCount*4));
+  rainflow.addData("BootCount5",       String(bootCount*5));
+  rainflow.addData("BootCount6",       String(bootCount*6));
+  rainflow.addData("BootCount7",       String(bootCount*7));
+  rainflow.addData("BootCount8",       String(bootCount*8));
+  rainflow.addData("BootCount9",       String(bootCount*9));
+  rainflow.addData("BootCount10",       String(bootCount*10));
+  rainflow.addData("BootCount11",       String(bootCount*11));
+  rainflow.addData("BootCount12",       String(bootCount*12));
+  rainflow.addData("BootCount13",       String(bootCount*13));
+
   doc.clear();
 }
 
@@ -200,23 +192,16 @@ void publishData() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     rainflow.publishData(APIKey);
-    digitalWrite(LED, HIGH);
-    delay(25);
-    digitalWrite(LED, LOW);
-    delay(50);
-    digitalWrite(LED, HIGH);
-    delay(25);
-    digitalWrite(LED, LOW);
     delay(10000);
     esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
     Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) +
                    " Seconds");
     Serial.println("Going to sleep now");
-    delay(1000);
+    delay(10000);
     WiFi.disconnect();
     Serial.flush();
+    //esp_deep_sleep_start();
     esp_deep_sleep_start();
-    //esp_light_sleep_start();
   }
 }
 
@@ -229,7 +214,6 @@ void setup() {
   print_wakeup_reason();
   Serial.println("System initialising");
   rainflow.rainflow(client);
-  pinMode(LED, OUTPUT);
   connectWifi(ssid, password);
   runner.init();
   runner.addTask(publishDataScheduler);
@@ -239,21 +223,9 @@ void setup() {
   timeClient.forceUpdate();
   printLocalTime();
   rainflow.connectServer(APIKey);
-  int32_t rssi = getRSSI(ssid);
-  Serial.println(rssi);
 }
 
 void loop() {
-  while (Serial.available()) {
-    message = Serial.readString();
-    Serial.println("Received message: ");
-    Serial.println(message);
-    DeserializationError error = deserializeJson(doc, message);
-    if (error)
-      return;
-    timeClient.update();
-    printLocalTime();
-    publishData();
-  }
-    //runner.execute();
+  getData();
+  publishData();
 }

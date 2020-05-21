@@ -13,27 +13,23 @@
 PubSubClient rainflowMQTT;
 
 
-
-void RainFLOW::connectServer(const char* APIKey) {
-  rainflowMQTT.setServer("test.mosquitto.org", 1883);
-//  rainflowMQTT.setCallback(rainflowCallback);
+void RainFLOW::connectServer(const char* clientID, const char* username, const char* password) {
+  rainflowMQTT.setServer("rainflow.live", 1883);
+  //  rainflowMQTT.setCallback(rainflowCallback);
   DEBUG_PRINT("Connecting to RainFLOW Server.");
-  while (connectMqtt(APIKey) == false) continue;
+  while (connectMqtt(clientID, username, password) == false) continue;
 }
 
-bool RainFLOW::connectMqtt(const char* APIKey) {
-  if (!rainflowMQTT.connect(APIKey)) {
-    Serial.println(!rainflowMQTT.connect(APIKey));
+bool RainFLOW::connectMqtt(const char* clientID, const char* username, const char* password) {
+  if (!rainflowMQTT.connect(clientID, username, password)) {
+    Serial.println(!rainflowMQTT.connect(clientID, username, password));
     DEBUG_PRINT(".");
     delay(50);
     return false;
   }
   DEBUG_PRINT("Connected to server!");
-  char topic[45];
-  strcpy(topic, "rainflow/device/");
-  strcat(topic, APIKey);
-  rainflowMQTT.subscribe(topic);                  // Subscribe to device management channel
-  DEBUG_PRINT("Subscribed to: " + String(topic));
+  rainflowMQTT.subscribe("/RAFT");                  // Subscribe to device management channel
+  DEBUG_PRINT("Subscribed to: /RAFT_Data");
   return rainflowMQTT.connected();
   delay(50);
 }
@@ -44,26 +40,36 @@ void rainflowCallback(char* topic, byte* payload, unsigned int len) {
   Serial.write(payload, len);
 }
 
-void RainFLOW::addData(String topic, String payload) {
-  payloadData[topic] = payload;                                             // Add payload to JSON variable
+void RainFLOW::addData(const char* dataName, String dataPayload, String dataTime) {
+  JsonObject nestedObject = payload_Data.createNestedObject(dataName);
+  nestedObject["time"] = dataTime;
+  nestedObject["value"] = dataPayload;
+  //  merge(nestedObject, payloadWrap);
+  //  merge(nestedObject, payloadData);
+  //  payloadData[dataName] = payload;                                             // Add payload to JSON variable
 }
 
 
-void RainFLOW::publishData(const char* APIKey) {
-  while (connectMqtt(APIKey) == false) continue;
+void RainFLOW::publishData(const char* clientID, const char* username, const char* password, const char* streamID) {
+  while (connectMqtt(clientID, username, password) == false) continue;
   char topicBuffer[1024];
   String payloadBuffer;
   String topic;
   int len;
 
-  serializeJson(payloadData, payloadBuffer);
-  topic =   "rainflow/data/";
-  topic  +=  APIKey;                                                          // Append API Key to data
-  len       = strlen(payloadBuffer.c_str());                                  // Calculates Payload Size
+  const char* topicData = "data";
 
+  payloadData["data_type"] = "event";
+  payloadData["stream_id"] = streamID;
+
+
+  serializeJson(payloadData, payloadBuffer);
+  topic =   "/RAFT_Data";
+  len       = strlen(payloadBuffer.c_str());                                  // Calculates Payload Size
   rainflowMQTT.publish(topic.c_str(), payloadBuffer.c_str(), len);            // Publishes payload to server
   DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
-  payloadData.clear();
+  payloadData.clear();                                                        // Clear JSON Documents
+  delay(5000);
 }
 
 

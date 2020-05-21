@@ -15,7 +15,7 @@ PubSubClient rainflowMQTT;
 
 
 void RainFLOW::connectServer(const char* APIKey) {
-  rainflowMQTT.setServer("192.168.1.9", 1883);
+  rainflowMQTT.setServer("rainflow.live", 1883);
 //  rainflowMQTT.setCallback(rainflowCallback);
   DEBUG_PRINT("Connecting to RainFLOW Server.");
   int i = 0;

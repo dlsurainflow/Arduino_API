@@ -14,7 +14,7 @@
 
 void publishData();
 
-Task publishDataScheduler(30000, TASK_FOREVER, &publishData);
+Task publishDataScheduler(60000, TASK_FOREVER, &publishData);
 Scheduler runner;
 
 Smoothed<double> SP1C;  // Solar Panel 1 Current
@@ -27,7 +27,7 @@ Battery battery(3400, 4200, BV_PIN);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("System initialising");
+//  Serial.println("System initialising");
   runner.init();
   runner.addTask(publishDataScheduler);
   publishDataScheduler.enable();
@@ -74,10 +74,10 @@ void getData() {
     SPRCSamples = SPRCSamples + SPRCValue;
 
     //float SPRCVoltage = analogRead(BV_PIN);
-//    float SPRCVoltage = battery.voltage();
-//    BV.add(SPRCVoltage);
-//    BVValue = BV.get();
-//    BVSamples = BVSamples + BVValue;
+    //    float SPRCVoltage = battery.voltage();
+    //    BV.add(SPRCVoltage);
+    //    BVValue = BV.get();
+    //    BVSamples = BVSamples + BVValue;
 
     delay (5);
   }
@@ -94,16 +94,16 @@ void getData() {
   SPRCRaw = (SPRCSamples / sampleRate);
   //SPRCVoltage = ((SPRCRaw / 1024.0)) * 5.0;
   SPRCVoltage = SPRCRaw;
-  float supplyVoltage = readVcc()/1000.000;
-  float supplyVoltageHalfed = supplyVoltage/2.000;
+  float supplyVoltage = readVcc() / 1000.000;
+  float supplyVoltageHalfed = supplyVoltage / 2.000;
   SPRCurrent = ((SPRCVoltage - supplyVoltageHalfed) / 0.185);
 
-//
-//  BVRaw = (BVSamples / sampleRate);
-//  //  BVoltage = ((BVRaw / 1024.0)) * 5.0;
-//  BVoltage = BVRaw / 1000;
+  //
+  //  BVRaw = (BVSamples / sampleRate);
+  //  //  BVoltage = ((BVRaw / 1024.0)) * 5.0;
+  //  BVoltage = BVRaw / 1000;
 
-    // read normal Arduino value
+  // read normal Arduino value
   int in0 = analogRead(BV_PIN);
   float val0 = in0 * 5.0 / 1024.0;
   // read correct supply voltage
@@ -111,19 +111,19 @@ void getData() {
   float val0Corrected = supply / 5 * val0;
 
 
+  float battLevel = (val0Corrected - 3.3) / (4.2 - 3.3) * 100;
 
-
-  data["SP1 Raw"] =          SP1CRaw;
-  data["SP1 ACS Voltage"] =  SP1CVoltage;
+  //  data["SP1 Raw"] =          SP1CRaw;
+  //  data["SP1 ACS Voltage"] =  SP1CVoltage;
   data["SP1 Current"] =      SP1Current;
-  data["SP1 VRaw"] =         SP1VRaw;
+  //  data["SP1 VRaw"] =         SP1VRaw;
   data["SP1 Voltage"] =      SP1Voltage;
   data["SP1 Power"] =        SP1Power;
-  data["SPR Raw"] =          SPRCRaw;
-  data["SPR ACS Voltage"] =  SPRCVoltage;
+  //  data["SPR Raw"] =          SPRCRaw;
+  //  data["SPR ACS Voltage"] =  SPRCVoltage;
   data["SPR Current"] =      SPRCurrent;
-  data["BATT Raw"] =         battery.level();
-  data["BATT Voltage"] =     val0Corrected;
+  data["BattLevelNano"] =    battLevel;
+  data["BattVoltageNano"] =  val0Corrected;
 
   SP1C.clear();
   SP1V.clear();
