@@ -412,13 +412,14 @@ void getData() {
   rainflow.addData("floodDepth", String(floodDepth), unixTime);
   //while (SerialGPS.available() <= 0){}
   //while (!SerialGPS.available()) {}
-  //while (SerialGPS.available() > 0) {
+  // while (SerialGPS.available() > 0) {
+  //gps.encode(SerialGPS.read());
   rainflow.addData("Latitude", String(gps.location.lat()), unixTime);
   rainflow.addData("Longitude", String(gps.location.lng()), unixTime);
   rainflow.addData("Altitude", String(gps.altitude.meters()), unixTime);
   rainflow.addData("Satellites", String(gps.satellites.value()), unixTime);
   //}
-  rainflow.addData("battVoltage", String(rainfallAmount), unixTime);
+  rainflow.addData("battVoltage", String(getBatteryVoltage()), unixTime);
 
 #ifdef MODEM_WIFI
   rainflow.addData("RSSI_modem_1", String(getRSSI(ssid)), unixTime);
@@ -444,25 +445,36 @@ void publishData() {
 
 String getUnixTime() {
   tmElements_t te;
-  time_t unixTime;
+  time_t unixTime = 1590060818;
   //while (Serial.available() <= 0) {}
   //while (!SerialGPS.available()) {}
-  while (SerialGPS.available() > 0) {
-    if (gps.encode(SerialGPS.read())) {
-      te.Second   = gps.time.second();
-      te.Hour     = gps.time.hour();
-      te.Minute   = gps.time.minute();
-      te.Day      = gps.date.day();
-      te.Month    = gps.date.month();
-      te.Year     = gps.date.year() - (uint32_t)1970;
-      unixTime    = makeTime(te);
-    }
-    else {
-      unixTime = 1590060818;
-    }
-  }
+  smartDelay(1000);
+  //while (SerialGPS.available() > 0) {
+  gps.encode(SerialGPS.read());
+  te.Second   = gps.time.second();
+  te.Hour     = gps.time.hour();
+  te.Minute   = gps.time.minute();
+  te.Day      = gps.date.day();
+  te.Month    = gps.date.month();
+  te.Year     = gps.date.year() - (uint32_t)1970;
+  unixTime    = makeTime(te);
+  //}
+  //    else {
+  //      unixTime = 1590060818;
+  //      }
+  //}
 
   return (String)unixTime;
+}
+
+static void smartDelay(unsigned long ms)
+{
+  unsigned long start = millis();
+  do
+  {
+    while (SerialGPS.available())
+      gps.encode(SerialGPS.read());
+  } while (millis() - start < ms);
 }
 
 void fade() {
@@ -470,6 +482,8 @@ void fade() {
   delay(50);
   digitalWrite(LED_BUILTIN, LOW);
 }
+
+
 
 void setup() {
   Serial.begin(115200);

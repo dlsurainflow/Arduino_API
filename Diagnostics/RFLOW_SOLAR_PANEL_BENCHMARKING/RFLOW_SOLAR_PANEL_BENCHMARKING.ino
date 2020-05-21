@@ -225,6 +225,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   ++bootCount;
+  void print_wakeup_reason();
   Serial.println("Boot number: " + String(bootCount));
   print_wakeup_reason();
   Serial.println("System initialising");
