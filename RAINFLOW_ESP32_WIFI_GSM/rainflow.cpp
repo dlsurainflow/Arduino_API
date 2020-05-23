@@ -72,6 +72,9 @@ void RainFLOW::publishData(const char* clientID, const char* username, const cha
   delay(5000);
 }
 
+void RainFLOW::disconnect(){
+  rainflowMQTT.disconnect();
+}
 
 void RainFLOW::rainflow(Client& client) {
   rainflowMQTT.setClient(client);

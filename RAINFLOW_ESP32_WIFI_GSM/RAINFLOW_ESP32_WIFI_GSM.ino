@@ -3,7 +3,8 @@
 #define BATTMAXVOLT 4.2         // Maximum Battery Voltage
 #define BATTMINVOLT 3.2         // Minimum Battery Voltage
 #define BATTERYPIN 34           // Battery PIN
-#define BATTERYRATIO 0.71825    // Battery voltage divider ratio
+#define BATTERYRATIO 1    // Battery voltage divider ratio
+//#define BATTERYRATIO 0.71825    // Battery voltage divider 
 #define RGPIN 35                // Rain Guage Pin
 #define LED 23                  // LED Indicator Pin
 #define uS_TO_S_FACTOR 1000000  // Conversion factor for micro seconds to seconds */
@@ -64,9 +65,9 @@ RTC_DATA_ATTR float raftHeight = 0;                // Set original Height
 float floodDepth = 0;                // Water level
 
 // RAFT Details
-const char* clientID  = "398662fbafdefed1b21649eba4f2e8ee1504";
-const char* username  = "398662fbafdefed1b21649eba4f2e8ee1504";
-const char* password  = "a14eb96a921be25727314d9982aa93fb3a69";
+const char* clientID  = "13130516a6f241e1b991f9293e9f29b99911";
+const char* username  = "13130516a6f241e1b991f9293e9f29b99911";
+const char* password  = "416dfaf311688498f4666ebdf34992f9eb61";
 const char* streamID  = "RAFT_Data";
 
 
@@ -221,8 +222,9 @@ void modeCheck() {
 }
 
 void mode_Standby() {
+  DEBUG_PRINT("Mode: Standby");
   DEBUG_PRINT("Standby Mode.");
-  int minutesToSleep = 2;
+  int minutesToSleep = 10;
   //publishDataScheduler.disable();
   publishData();
   sleep(minutesToSleep * 60);
@@ -230,7 +232,7 @@ void mode_Standby() {
 }
 
 void mode_ContinuousMonitoring() {
-  DEBUG_PRINT("Continous Monitoring Mode.");
+  DEBUG_PRINT("Mode: Continuous Monitoring");
   if (!publishDataScheduler.isEnabled()) {
     publishDataScheduler.enable();
   }
@@ -242,8 +244,8 @@ void mode_ContinuousMonitoring() {
 }
 
 void mode_BatterySaver() {
-  DEBUG_PRINT("Battery Saver Mode.");
-  int minutesToSleep = 2;
+  DEBUG_PRINT("Mode: Battery Saver");
+  int minutesToSleep = 10;
   publishDataScheduler.disable();
 
   publishData();
@@ -255,7 +257,8 @@ void sleep(int time_to_sleep) {
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_21, 0);
   esp_sleep_enable_timer_wakeup(time_to_sleep * uS_TO_S_FACTOR);
   DEBUG_PRINT("Sleeping for " + String(time_to_sleep) + " Seconds");
-
+  rainflow.disconnect();
+  Serial.println("Disconnected from server.");
   delay(100);
   Serial.flush();
   esp_deep_sleep_start();
@@ -304,21 +307,6 @@ void attachGPS() {
   SerialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_TX, GPS_RX);
   DEBUG_PRINT("Attached GPS @ RX: " + String(GPS_RX) + "  TX: " + String(GPS_TX));
 }
-//
-//void getGPS() {
-//  while (SerialGPS.available() > 0) {
-//    if (gps.encode(SerialGPS.read())) {
-//      String Date = String(gps.date.month()) + " / " + String(gps.date.day()) + " / " + String(gps.date.year());
-//      String Time = String(gps.time.hour()) + ": " + String(gps.time.minute()) + ": " + String(gps.time.second());
-//
-//      rainflow.addData("Date",        Date);
-//      rainflow.addData("Time",        Time);
-//      rainflow.addData("Latitude",    String(gps.location.lat()));
-//      rainflow.addData("Longitude",   String(gps.location.lng()));
-//      rainflow.addData("Altitude",    String(gps.altitude.meters()));
-//    }
-//  }
-//}
 
 void getHeight() {
   float sample = 0.00, raw = 0.00;
@@ -410,22 +398,18 @@ void getData() {
   String unixTime = getUnixTime();
   rainflow.addData("rainfallAmount", String(rainfallAmount), unixTime);
   rainflow.addData("floodDepth", String(floodDepth), unixTime);
-  //while (SerialGPS.available() <= 0){}
-  //while (!SerialGPS.available()) {}
-  // while (SerialGPS.available() > 0) {
-  //gps.encode(SerialGPS.read());
   rainflow.addData("Latitude", String(gps.location.lat()), unixTime);
   rainflow.addData("Longitude", String(gps.location.lng()), unixTime);
   rainflow.addData("Altitude", String(gps.altitude.meters()), unixTime);
+  rainflow.addData("Altitude_1", String(gps.altitude.meters()), unixTime);
   rainflow.addData("Satellites", String(gps.satellites.value()), unixTime);
-  //}
   rainflow.addData("battVoltage", String(getBatteryVoltage()), unixTime);
 
 #ifdef MODEM_WIFI
-  rainflow.addData("RSSI_modem_1", String(getRSSI(ssid)), unixTime);
+  rainflow.addData("RSSI_modem_2", String(getRSSI(ssid)), unixTime);
 #endif
 #ifdef MODEM_GSM
-  rainflow.addData("RSSI_modem_1", String(modem.getSignalQuality()), unixTime);
+  rainflow.addData("RSSI_modem_2", String(modem.getSignalQuality()), unixTime);
 #endif
 }
 
@@ -446,11 +430,11 @@ void publishData() {
 String getUnixTime() {
   tmElements_t te;
   time_t unixTime = 1590060818;
-  //while (Serial.available() <= 0) {}
-  //while (!SerialGPS.available()) {}
   smartDelay(1000);
-  //while (SerialGPS.available() > 0) {
-  gps.encode(SerialGPS.read());
+  while (!gps.time.isValid()) {
+    gps.encode(SerialGPS.read());
+    smartDelay(1000);
+  }
   te.Second   = gps.time.second();
   te.Hour     = gps.time.hour();
   te.Minute   = gps.time.minute();
@@ -458,12 +442,6 @@ String getUnixTime() {
   te.Month    = gps.date.month();
   te.Year     = gps.date.year() - (uint32_t)1970;
   unixTime    = makeTime(te);
-  //}
-  //    else {
-  //      unixTime = 1590060818;
-  //      }
-  //}
-
   return (String)unixTime;
 }
 
@@ -489,18 +467,14 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   DEBUG_PRINT("System initialising");
-
-  //  pinMode(BATTERYPIN, INPUT);
+  setCpuFrequencyMhz(80);
+  pinMode(BATTERYPIN, INPUT);
   attachGPS();
   attachRainGauge(RGPIN);
   pinMode(LED_BUILTIN, OUTPUT);
 
 #ifdef MODEM_WIFI
   connectWifi(ssid, wifi_pass);
-  //  timeClient.begin();
-  //  timeClient.setTimeOffset(28800);
-  //  timeClient.forceUpdate();
-  //  printLocalTime();
 #endif
 #ifdef MODEM_GSM
   connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);

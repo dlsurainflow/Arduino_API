@@ -29,6 +29,7 @@ class RainFLOW {
     void publishData(const char* clientID, const char* username, const char* password, const char* streamID);
     void rainflowCallback(char* topic, byte* payload, unsigned int len);
     void rainflow(Client& client);
+    void disconnect();
 
 
 };
