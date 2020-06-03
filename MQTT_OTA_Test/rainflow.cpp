@@ -27,7 +27,7 @@ bool RainFLOW::connectMqtt(const char* clientID, const char* username, const cha
   int i = 0;
   while (!rainflowMQTT.connect(clientID, username, password)) {
     DEBUG_PRINT(".");
-    wait(50);
+    delay(50);
     if (i == 25)  return false;
     i++;
   }
@@ -35,8 +35,9 @@ bool RainFLOW::connectMqtt(const char* clientID, const char* username, const cha
   rainflowMQTT.subscribe("Device");                  // Subscribe to device management channel
   DEBUG_PRINT("Subscribed to: Device");
   return rainflowMQTT.connected();
-  wait(50);
+  delay(50);
 }
+
 
 void rainflowCallback(char* topic, byte* payload, unsigned int len) {
   DEBUG_PRINT("Received message: ");
@@ -72,7 +73,7 @@ void RainFLOW::publishData(const char* clientID, const char* username, const cha
   rainflowMQTT.publish(topic.c_str(), payloadBuffer.c_str(), len);            // Publishes payload to server
   DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
   payloadData.clear();                                                        // Clear JSON Documents
-  wait(5000);
+  delay(5000);
 }
 
 void RainFLOW::disconnect() {
@@ -83,109 +84,102 @@ void RainFLOW::rainflow(Client& client) {
   rainflowMQTT.setClient(client);
 }
 
+void RainFLOW::keepAlive(){
+  rainflowMQTT.loop();
+}
+
 RainFLOW& RainFLOW::setCallback(MQTT_CALLBACK_SIGN) {
   this->mqttCallback = mqttCallback;
   return *this;
 }
 
 void RainFLOW::callback(char* topic, byte* payload, unsigned int length) {
-  //
-  //  //  Generating String from received payload
-  //  String message = String();
-  //  for (int i = 0; i < length; i++) {
-  //    char input_char = (char)payload[i];
-  //    message += input_char;
-  //  }
-  //  //  Converting String to JSON Array
-  //  char jsonChar[100];
-  //  message.toCharArray(jsonChar, message.length() + 1);
-  //  StaticJsonBuffer<500> jsonBuffer;
-  //  JsonObject& root = jsonBuffer.parseObject(jsonChar);
-  //  String Topic = root["TOPIC"];
-  //
-  //  //  Reactions on received message
-  //
-  //  if (Topic == "SYSTEM")
-  //  {
-  //    String Payload = root["PAYLOAD"];
-  //
-  //    if (Payload == "INFO")
-  //    {
-  //      systemInfo();
-  //    }
-  //    else if (Payload == "NTP")
-  //    {
-  //      unsigned long _NTP = root["NTP"];
-  //      NTP = ((_NTP + 1000) - millis());
-  //      _Sunrise = root["SUNRISE"];
-  //      _Sunset = root["SUNSET"];
-  //      ReturnACK(String(CLIENT_ID) + " [" + Payload + " OK]");
-  //      WriteSPIFFS("Time", _Time);
-  //    }
-  //    else if (Payload == "OTA")
-  //    {
-  //      Publish("debug", String(CLIENT_ID) + " [" + Payload + " OK]");
-  //      String Link = "/" + String(CLIENT_ID) + ".bin";
-  //      ESPhttpUpdate.update(MQTT_SERVER, OTA_PORT, Link);
-  //    }
-  //    else if (Payload == "REBOOT")
-  //    {
-  //      Publish("debug", String(CLIENT_ID) + " [" + Payload + " OK]");
-  //      ESP.restart();
-  //    }
-  //  }
-  //
-  //  else if (Topic == "GPIO")
-  //  {
-  //    int Pin = root["PIN"];
-  //    int Value = root["VALUE"];
-  //    setOverride(Pin, Value);
-  //    WriteGPIO(Pin, Value);
-  //  }
-  //
-  //  else if (Topic == "OVERRIDE?")
-  //  {
-  //    int Pin = root["PIN"];
-  //    Publish("debug", "OVERRIDE[" + String(gpio_override[Pin]) + "]");
-  //  }
-  //  else if (Topic == "GPIO?")
-  //  {
-  //    int Pin = root["PIN"];
-  //    Publish("debug", "Pin[" + String(Pin) + " " + String(digitalRead(Pin)) + "]");
-  //  }
-  //  else if (Topic == "SPIFF")
-  //  {
-  //    String Object = root["OBJECT"];
-  //    int Value = root["VALUE"];
-  //    WriteSPIFFS(Object, Value);
-  //    Publish("debug", "SPIFF[" + Object + " " + String(Value) + "]");
-  //  }
-  //  else if (Topic == "SPIFF?")
-  //  {
-  //    String Object = root["OBJECT"];
-  //    int Value = ReadSPIFFS(Object);
-  //    Publish("debug", "SPIFF?[" + Object + " " + String(Value) + "]");
-  //  }
-  //  else
-  //  {
-  //    if (mqttCallback)
-  //    {
-  //      mqttCallback(message);
-  //    } else {
-  //      String Payload;
-  //      root.printTo(Payload);
-  //      Publish("debug", String(CLIENT_ID) + " [COMMAND INVALID]");
-  //    }
-  //  }
-}
-
-void RainFLOW::keepAlive() {
-  rainflowMQTT.loop();
-}
-
-void RainFLOW::wait(unsigned long interval) {
-  // In milliseconds (1s == 1000 ms)
-  unsigned long time_now = millis();
-  while (!(millis() - time_now >= interval)) {
-  }
+//
+//  //  Generating String from received payload
+//  String message = String();
+//  for (int i = 0; i < length; i++) {
+//    char input_char = (char)payload[i];
+//    message += input_char;
+//  }
+//  //  Converting String to JSON Array
+//  char jsonChar[100];
+//  message.toCharArray(jsonChar, message.length() + 1);
+//  StaticJsonBuffer<500> jsonBuffer;
+//  JsonObject& root = jsonBuffer.parseObject(jsonChar);
+//  String Topic = root["TOPIC"];
+//
+//  //  Reactions on received message
+//
+//  if (Topic == "SYSTEM")
+//  {
+//    String Payload = root["PAYLOAD"];
+//
+//    if (Payload == "INFO")
+//    {
+//      systemInfo();
+//    }
+//    else if (Payload == "NTP")
+//    {
+//      unsigned long _NTP = root["NTP"];
+//      NTP = ((_NTP + 1000) - millis());
+//      _Sunrise = root["SUNRISE"];
+//      _Sunset = root["SUNSET"];
+//      ReturnACK(String(CLIENT_ID) + " [" + Payload + " OK]");
+//      WriteSPIFFS("Time", _Time);
+//    }
+//    else if (Payload == "OTA")
+//    {
+//      Publish("debug", String(CLIENT_ID) + " [" + Payload + " OK]");
+//      String Link = "/" + String(CLIENT_ID) + ".bin";
+//      ESPhttpUpdate.update(MQTT_SERVER, OTA_PORT, Link);
+//    }
+//    else if (Payload == "REBOOT")
+//    {
+//      Publish("debug", String(CLIENT_ID) + " [" + Payload + " OK]");
+//      ESP.restart();
+//    }
+//  }
+//
+//  else if (Topic == "GPIO")
+//  {
+//    int Pin = root["PIN"];
+//    int Value = root["VALUE"];
+//    setOverride(Pin, Value);
+//    WriteGPIO(Pin, Value);
+//  }
+//
+//  else if (Topic == "OVERRIDE?")
+//  {
+//    int Pin = root["PIN"];
+//    Publish("debug", "OVERRIDE[" + String(gpio_override[Pin]) + "]");
+//  }
+//  else if (Topic == "GPIO?")
+//  {
+//    int Pin = root["PIN"];
+//    Publish("debug", "Pin[" + String(Pin) + " " + String(digitalRead(Pin)) + "]");
+//  }
+//  else if (Topic == "SPIFF")
+//  {
+//    String Object = root["OBJECT"];
+//    int Value = root["VALUE"];
+//    WriteSPIFFS(Object, Value);
+//    Publish("debug", "SPIFF[" + Object + " " + String(Value) + "]");
+//  }
+//  else if (Topic == "SPIFF?")
+//  {
+//    String Object = root["OBJECT"];
+//    int Value = ReadSPIFFS(Object);
+//    Publish("debug", "SPIFF?[" + Object + " " + String(Value) + "]");
+//  }
+//  else
+//  {
+//    if (mqttCallback)
+//    {
+//      mqttCallback(message);
+//    } else {
+//      String Payload;
+//      root.printTo(Payload);
+//      Publish("debug", String(CLIENT_ID) + " [COMMAND INVALID]");
+//    }
+//  }
 }
