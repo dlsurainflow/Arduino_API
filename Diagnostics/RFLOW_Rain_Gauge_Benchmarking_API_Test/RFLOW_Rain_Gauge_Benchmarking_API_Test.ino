@@ -25,9 +25,11 @@
 #define GPS_TX  26              // GSM/GPRS Module TX Pin
 #define GPS_BAUD  9600          // GSM/GPRS Module TX Pin
 // -- RAIN GAUGE DEFINITIONS
-#define RGPIN 35                // Rain Guage Pin
-#define GPIO_NUM_X  GPIO_NUM_35 // 
-#define tipAmount 0.6489
+#define rainGaugePin      35              // Rain Guage 1 Pin
+#define rainGaugePin2     32              // Rain Gauge 2
+#define GPIO_PIN_BITMASK  0x900000000     // (2^35 + 2^32)Hex
+#define tipAmount         0.6489
+#define tipAmount2        0.6489
 // -- BAROMETER DEFINITIONS
 #define SEALEVELPRESSURE_HPA (1013.25)  // Change to mean sea level pressure in your area
 
@@ -37,22 +39,21 @@
 #include <ArduinoJson.h>
 #include <TinyGPS++.h>
 #include <Smoothed.h>
-#include <NewPing.h>
-#include <NTPClient.h>
+//#include <NewPing.h>
+//#include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <Time.h>
-
 #include <Wire.h>
 #include <SPI.h>
-
 #include <TimeLib.h>
 #include "rainflow.h"
+
+
 #ifdef MODEM_GSM
 #include <TinyGsmClient.h>
 #endif
 #ifdef MODEM_WIFI
 #include <WiFi.h>
-#include <ArduinoOTA.h>
 #endif
 
 //WiFi Access Point Details
@@ -80,7 +81,6 @@ RTC_DATA_ATTR int bootCount = 0;
 long currentmillis = 0;
 
 
-//int test = 0;
 int currentMode = 0;
 
 #ifdef MODEM_WIFI
@@ -98,18 +98,21 @@ Adafruit_BME280 bme; // I2C
 
 void publishData();
 void modeCheck();
+void rainfallAmountReset();
 
 TinyGPSPlus gps;
 HardwareSerial SerialGPS(1);
-NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
-//Task publishDataScheduler(60e3, TASK_FOREVER, &publishData);    // Every 1 minute 60seconds * 1000
-//ask checkMode(180e4, TASK_FOREVER, &modeCheck);                // Every 30 minutes
+//NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
 
-Task publishDataScheduler(1, TASK_FOREVER, &publishData);
-Task checkMode(2, TASK_FOREVER, &modeCheck);
+Task publishDataScheduler(10 * 60e3, TASK_FOREVER, &publishData);   // Every 10 minutes -10min*60seconds*1000
+Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);                 // Every 5 minutes
+Task rainfallReset(5 * 60e3, TASK_FOREVER, &rainfallAmountReset);   // Every 5 minutes
+
+//Task publishDataScheduler(1, TASK_FOREVER, &publishData);
+//Task checkMode(2, TASK_FOREVER, &modeCheck);
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP);
-Smoothed<float> waterDepthSensor;
+//NTPClient timeClient(ntpUDP);
+//Smoothed<float> waterDepthSensor;
 Scheduler Runner;
 
 /////////////////////////  RAIN GAUGE  ///////////////////////
@@ -119,12 +122,14 @@ Scheduler Runner;
 //  Catachment area = pi*r*r=102.79cm^2
 //  Rainfall per tip = 6.67mL/102.79 = 0.6489mL/tip
 
-RTC_DATA_ATTR int tipCount    = 0;                  // Total Amount of Tips
+RTC_DATA_ATTR int tipCount      = 0;                  // Total Amount of Tips
+RTC_DATA_ATTR int tipCount2     = 0;                  // Total Amount of Tips
+RTC_DATA_ATTR int rainGaugeDate = 0;                  // Rain Gauge Date
+static unsigned long lastDetectedTipMillis, lastDetectedTipMillis2;     // Time of Last Rain Guage Tip
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 void IRAM_ATTR tippingBucket() {
-  static unsigned long lastDetectedTipMillis;  // Time of Last Rain Guage Tip
 
   // Debounce for a quarter secon = max 4 counts/second
   if (millis() - lastDetectedTipMillis > 250)
@@ -139,19 +144,59 @@ void IRAM_ATTR tippingBucket() {
   }
 }
 
-void attachRainGauge(int rainGaugePin) {
-  DEBUG_PRINT("Rain Gauge attached to pin: " + String(rainGaugePin));
+void IRAM_ATTR tippingBucket2() {
+  //  static unsigned long lastDetectedTipMillis2;  // Time of Last Rain Guage Tip
+
+  // Debounce for a quarter secon = max 4 counts/second
+  if (millis() - lastDetectedTipMillis2 > 250)
+  {
+    portENTER_CRITICAL_ISR(&mux);
+    tipCount2++;
+
+    DEBUG_PRINT("Tip Count:"  + String(tipCount2));
+
+    lastDetectedTipMillis2 = millis();
+    portEXIT_CRITICAL_ISR(&mux);
+  }
+}
+
+void attachRainGauge() {
+  DEBUG_PRINT("Rain Gauge 1 attached to pin: " + String(rainGaugePin));
   pinMode(rainGaugePin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(rainGaugePin), tippingBucket, FALLING);
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_X, 0);
+  //esp_sleep_enable_ext0_wakeup(GPIO_NUM_X1, 0);
+
+  DEBUG_PRINT("Rain Gauge attached to pin: " + String(rainGaugePin2));
+  pinMode(rainGaugePin2, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(rainGaugePin2), tippingBucket2, FALLING);
+}
+
+void rainfallAmountReset() {
+
+  smartDelay(5000);
+  if (rainGaugeDate != gps.date.day()) {
+    tipCount = 0;
+    tipCount2 = 0;
+    rainGaugeDate = gps.date.day();
+  }
+
 }
 
 float rainfallRate() {
-  return tipAmount / 3600000;
+  return tipAmount * 360000000 / tipCount;
+  //return tipAmount / 3600000;
 }
 
 float rainfallAmount() {
-  return tipAmount * tipAmount;
+  return tipCount * tipAmount;
+}
+
+float rainfallRate2() {
+  return tipAmount2 * 360000000 / tipCount2;
+}
+
+float rainfallAmount2() {
+  return tipCount2 * tipAmount2;
 }
 /////////////////////////  END RAIN GAUGE  ///////////////////////
 
@@ -284,8 +329,7 @@ String getUnixTime() {
   return (String)unixTime;
 }
 
-static void smartDelay(unsigned long ms)
-{
+static void smartDelay(unsigned long ms) {
   unsigned long start = millis();
   do
   {
@@ -298,40 +342,40 @@ static void smartDelay(unsigned long ms)
 
 ///////////////////////// ULTRASONIC  ///////////////////////
 void getHeight() {
-  float sample = 0.00, raw = 0.00;
-  int sampleRate = 50;
-
-  for (int i = 0; i < sampleRate;) {
-    float sensorValue = sonar.ping_cm();
-    if (sensorValue != 0.00) {
-      waterDepthSensor.add(sensorValue);
-      sample = waterDepthSensor.get();
-      raw = raw + sample;
-      i++;
-    }
-    wait(5);
-  }
-  raftHeight = raw / sampleRate;
-  DEBUG_PRINT("RAFT Height: " + String(raftHeight));
-  waterDepthSensor.clear();
+  //  float sample = 0.00, raw = 0.00;
+  //  int sampleRate = 50;
+  //
+  //  for (int i = 0; i < sampleRate;) {
+  //    float sensorValue = sonar.ping_cm();
+  //    if (sensorValue != 0.00) {
+  //      waterDepthSensor.add(sensorValue);
+  //      sample = waterDepthSensor.get();
+  //      raw = raw + sample;
+  //      i++;
+  //    }
+  //    wait(5);
+  //  }
+  //  raftHeight = raw / sampleRate;
+  //  DEBUG_PRINT("RAFT Height: " + String(raftHeight));
+  //  waterDepthSensor.clear();
 }
 
 float getDepth() {
-  float sensorValue, raw = 0.00, sample = 0.00, avg = 0.00;
-  int sampleRate = 50;
-  for (int i = 0; i < sampleRate;) {
-    sensorValue = sonar.ping_cm();
-    if (sensorValue != 0.00) {
-      waterDepthSensor.add(sensorValue);
-      sample = waterDepthSensor.get();
-      raw = raw + sample;
-      i++;
-    }
-  }
-  avg = raw / sampleRate;
-  float floodDepth = raftHeight - avg;
-  DEBUG_PRINT("Flood Depth: " + String(floodDepth));
-  waterDepthSensor.clear();
+  //  float sensorValue, raw = 0.00, sample = 0.00, avg = 0.00;
+  //  int sampleRate = 50;
+  //  for (int i = 0; i < sampleRate;) {
+  //    sensorValue = sonar.ping_cm();
+  //    if (sensorValue != 0.00) {
+  //      waterDepthSensor.add(sensorValue);
+  //      sample = waterDepthSensor.get();
+  //      raw = raw + sample;
+  //      i++;
+  //    }
+  //  }
+  //  avg = raw / sampleRate;
+  //  float floodDepth = raftHeight - avg;
+  //  DEBUG_PRINT("Flood Depth: " + String(floodDepth));
+  //  waterDepthSensor.clear();
 
   return floodDepth;
 }
@@ -339,7 +383,7 @@ float getDepth() {
 ///////////////////////// END ULTRASONIC  ///////////////////////
 
 ///////////////////////// BATTERY ///////////////////////
-float getBatteryLevel() {
+float getBatteryLevel() {               // Returns State Of Charge (SOC) by voltage.
   double voltage = getBatteryVoltage();
   if (voltage <= BATTMINVOLT) {
     return 0.00;
@@ -348,7 +392,7 @@ float getBatteryLevel() {
     return 100.00;
   }
   else {
-    float batteryLevel = ((getBatteryVoltage() - BATTMINVOLT) / (BATTMAXVOLT - BATTMINVOLT)) * 100.00;
+    float batteryLevel = (voltage - BATTMINVOLT) / (BATTMAXVOLT - BATTMINVOLT) * 100.00;
     return batteryLevel;
   }
 }
@@ -381,10 +425,10 @@ void attachBarometer() {
     return;
   }
   bme.setSampling(Adafruit_BME280::MODE_FORCED,
-                  Adafruit_BME280::SAMPLING_X1, // temperature
-                  Adafruit_BME280::SAMPLING_X1, // pressure
-                  Adafruit_BME280::SAMPLING_X1, // humidity
-                  Adafruit_BME280::FILTER_OFF   );
+                  Adafruit_BME280::SAMPLING_X1, // Temperautre
+                  Adafruit_BME280::SAMPLING_X1, // Pressure
+                  Adafruit_BME280::SAMPLING_X1, // Humidity
+                  Adafruit_BME280::FILTER_OFF);
 }
 
 float getAltitude() {
@@ -407,65 +451,62 @@ float getHumidity() {
 
 void modeCheck() {
   // 0: Standby, 1: Continuous Monitoring, 2: Batery Saver
-  //  float minFloodDepth = 10;
-  //  unsigned long lastTipTime = 1.8e6;
-  //  if ((getDepth() < minFloodDepth) && (lastDetectedTipMillis >= lastTipTime)) {
-  //    DEBUG_PRINT("Mode: Standby");
-  //    mode_Standby();
-  //  }
-  //  else if (((getDepth() >= minFloodDepth) && (lastDetectedTipMillis < lastTipTime)) && (getBatteryLevel() > BATTMINVOLT)) {
-  //    DEBUG_PRINT("Mode: Continuous Monitoring");
-  //    mode_ContinuousMonitoring();
-  //  }
-  //  else if (((getDepth() >= minFloodDepth) && (lastDetectedTipMillis < lastTipTime)) && (getBatteryLevel() <= BATTMINVOLT)) {
-  //    DEBUG_PRINT("Mode: Battery Saver");
-  //    mode_BatterySaver();
-  //  }
-  mode_Standby(); // Force to standby
-  //mode_ContinuousMonitoring();
+  float minFloodDepth = 10;           // Minimum flood depth is 10 cm;;
+  unsigned long lastTipTime = 1.8e6;  // Last rain gauge tip time should be greater/equal to 30 minutes
+  if ((getDepth() < minFloodDepth) && (lastDetectedTipMillis >= lastTipTime) && (lastDetectedTipMillis2 >= lastTipTime)) {
+    mode_Standby();
+  }
+  else if (((getDepth() >= minFloodDepth) && (lastDetectedTipMillis < lastTipTime) && (lastDetectedTipMillis2 < lastTipTime)) && (getBatteryLevel() > 20.00)) {
+    mode_ContinuousMonitoring();
+  }
+  else if (((getDepth() >= minFloodDepth) && (lastDetectedTipMillis < lastTipTime) && (lastDetectedTipMillis2 < lastTipTime)) && (getBatteryLevel() <= 20.00)) {
+    mode_BatterySaver();
+  }
 }
 
 void mode_Standby() {
   DEBUG_PRINT("Standby Mode.");
   currentMode = 0;
   int minutesToSleep = 10;
-  //publishDataScheduler.disable();
-#ifdef MODEM_WIFI
-  connectWifi(ssid, wifi_pass);
-#endif
-#ifdef MODEM_GSM
-  connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
-#endif
+  publishDataScheduler.disable();
+  checkMode.disable();
   publishData();
-  ArduinoOTA.handle();
   sleep(minutesToSleep * 60);
-  //modeCheck();
 }
 
 void mode_ContinuousMonitoring() {
   DEBUG_PRINT("Mode: Continuous Monitoring");
-  currentMode = 1;
-  if (!publishDataScheduler.isEnabled()) {
+  if (!publishDataScheduler.isEnabled() || currentMode != 1) {
+    publishDataScheduler.disable();
+    publishDataScheduler.setInterval(10 * 60e3);
     publishDataScheduler.enable();
   }
-  if (!checkMode.isEnabled()) {
+  if (!checkMode.isEnabled() || currentMode != 1) {
+    checkMode.disable();
+    checkMode.setInterval(5 * 60e3);
     checkMode.enable();
   }
+  currentMode = 1;
 }
 
 void mode_BatterySaver() {
   DEBUG_PRINT("Mode: Battery Saver");
+  if (!publishDataScheduler.isEnabled() || currentMode != 2) {
+    publishDataScheduler.disable();
+    publishDataScheduler.setInterval(30 * 60e3);
+    publishDataScheduler.enable();
+  }
+  if (!checkMode.isEnabled() || currentMode != 2) {
+    checkMode.disable();
+    checkMode.setInterval(15 * 60e3);
+    checkMode.enable();
+  }
   currentMode = 2;
-  int minutesToSleep = 10;
-  publishDataScheduler.disable();
-
-  publishData();
-  sleep(minutesToSleep * 60);
-  modeCheck();
 }
 
 void sleep(int time_to_sleep) {
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_21, 0);
+  //esp_sleep_enable_ext0_wakeup(GPIO_NUM_21, ESP_EXT1_WAKEUP_ALL_LOW:);
+  esp_sleep_enable_ext1_wakeup(GPIO_PIN_BITMASK, ESP_EXT1_WAKEUP_ALL_LOW);
   esp_sleep_enable_timer_wakeup(time_to_sleep * uS_TO_S_FACTOR);
   DEBUG_PRINT("Sleeping for " + String(time_to_sleep) + " Seconds");
   rainflow.disconnect();
@@ -497,20 +538,6 @@ void wait(unsigned long interval) {
   }
 }
 
-//String uptime() {
-//  long days = 0, hours = 0, mins = 0, secs = 0;
-//  secs = millis() / 1000;           // Convert milliseconds to seconds
-//  mins = secs / 60;                 // Convert seconds to minutes
-//  hours = mins / 60;                // Convert minutes to hours
-//  days = hours / 24;                // Convert hours to days
-//  secs = secs - (mins * 60);        // Subtract the coverted seconds to minutes in order to display 59 secs max
-//  mins = mins - (hours * 60);       // Subtract the coverted minutes to hours in order to display 59 minutes max
-//  hours = hours - (days * 24);      // Subtract the coverted hours to days in order to display 23 hours max
-//
-//  String uptimeBuffer = String(days) + ":" + String(hours) + ":" + String(mins) + ":" + String(secs);
-//  return uptimeBuffer;
-//}
-
 void getData() {
   DEBUG_PRINT("Retrieving data.");
   String unixTime = getUnixTime();
@@ -524,13 +551,25 @@ void getData() {
   //  rainflow.addData("Pressure", String(getPressure()), unixTime);
   //  rainflow.addData("Satellites", String(gps.satellites.value()), unixTime);
   //  rainflow.addData("battVoltage", String(getBatteryVoltage()), unixTime);
+  rainflow.addData("LAT1",  String(gps.location.lat()),   unixTime);
+  rainflow.addData("LNG1",  String(gps.location.lng()),   unixTime);
+  rainflow.addData("ALT1",  String(getAltitude()),        unixTime);
+  rainflow.addData("FD1",   "0", unixTime);
+  rainflow.addData("RR1",   String(rainfallRate()),       unixTime);
+  rainflow.addData("RA1",   String(rainfallAmount()),     unixTime);
+  rainflow.addData("RR2",   String(rainfallRate2()),      unixTime);
+  rainflow.addData("RA2",   String(rainfallAmount2()),    unixTime);
+  rainflow.addData("TMP1",  String(getTemperature()),     unixTime);
+  rainflow.addData("PR1",   String(getPressure()),        unixTime);
+  rainflow.addData("HU1",   String(getHumidity()),        unixTime);
+  rainflow.addData("BV1",   String(getBatteryVoltage()),  unixTime);
 
-  rainflow.addData("Alt_GPS", String(gps.altitude.meters()), unixTime);
-  rainflow.addData("Alt_BME", String(getAltitude()), unixTime);
-  rainflow.addData("Humidity", String(getHumidity()), unixTime);
-  rainflow.addData("Temperature", String(getTemperature()), unixTime);
-  rainflow.addData("Pressure", String(getPressure()), unixTime);
-  rainflow.addData("BattVoltage", String(getBatteryVoltage()), unixTime);
+  //  rainflow.addData("Alt_GPS", String(gps.altitude.meters()), unixTime);
+  //  rainflow.addData("Alt_BME", String(getAltitude()), unixTime);
+  //  rainflow.addData("Humidity", String(getHumidity()), unixTime);
+  //  rainflow.addData("Temperature", String(getTemperature()), unixTime);
+  //  rainflow.addData("Pressure", String(getPressure()), unixTime);
+  //  rainflow.addData("BattVoltage", String(getBatteryVoltage()), unixTime);
 
   //#ifdef MODEM_WIFI
   //  rainflow.addData("RSSI_modem_2", String(getRSSI(ssid)), unixTime);
@@ -553,7 +592,17 @@ void publishData() {
   connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
   gprsConnect();
 #endif
-  rainflow.publishData(clientID, username, password, streamID);
+
+ //  rainflow.rainflow(client);                                    // Sets which network interface to be used by the RainFLOW API
+  rainflow.connectServer(clientID, username, password);         // Connects to RainFLOW Server
+  rainflow.publishData(clientID, username, password, streamID); // Publishes the data to RainFLOW server
+
+#ifdef MODEM_WIFI
+  disconnectWifi();
+#endif
+#ifdef MODEM_GSM
+#endif
+
   indicatorLED(false);
 }
 
@@ -581,64 +630,38 @@ void setup() {
   esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause();
   esp_sleep_wakeup_cause_t wakeup_reason;
   wakeup_reason = esp_sleep_get_wakeup_cause();
-  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) tippingBucket();
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1) {
+    //    int GPIO_reason = esp_sleep_get_ext1_wakeup_status();
+    int GPIO = log(esp_sleep_get_ext1_wakeup_status()) / log(2);
+    if (GPIO == rainGaugePin)   tippingBucket();
+    if (GPIO == rainGaugePin2)  tippingBucket2();
+  }
 
   // -- Attach Sensors
   pinMode(BATTERYPIN, INPUT);         // Have to check if still necessary
   attachGPS();
-  //attachRainGauge(RGPIN);
+  attachRainGauge();
   attachBarometer();
 
-#ifdef MODEM_WIFI
-  connectWifi(ssid, wifi_pass);
-//  ArduinoOTA
-//  .onStart([]() {
-//    String type;
-//    if (ArduinoOTA.getCommand() == U_FLASH)
-//      type = "sketch";
-//    else // U_SPIFFS
-//      type = "filesystem";
-//
-//    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-//    DEBUG_PRINT("Start updating " + type);
-//  })
-//
-//  .onEnd([]() {
-//    DEBUG_PRINT("\nEnd");
-//  })
-//
-//  .onProgress([](unsigned int progress, unsigned int total) {
-//    //  Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-//    DEBUG_PRINT("Progress: " + String(progress / (total / 100)));
-//  })
-//
-//  .onError([](ota_error_t error) {
-//    //  Serial.printf("Error[%u]: ", error);
-//    DEBUG_PRINT("Error " + String(error) + " ");
-//    if (error == OTA_AUTH_ERROR) DEBUG_PRINT("Auth Failed");
-//    else if (error == OTA_BEGIN_ERROR) DEBUG_PRINT("Begin Failed");
-//    else if (error == OTA_CONNECT_ERROR) DEBUG_PRINT("Connect Failed");
-//    else if (error == OTA_RECEIVE_ERROR) DEBUG_PRINT("Receive Failed");
-//    else if (error == OTA_END_ERROR) DEBUG_PRINT("End Failed");
-//  });
-//  ArduinoOTA.begin();
-#endif
-#ifdef MODEM_GSM
-    connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
-#endif
-
-  rainflow.rainflow(client);                            // Set RainFLOW API to use this client modem
-  rainflow.connectServer(clientID, username, password); // Connects to RainFLOW Server
+  //#ifdef MODEM_WIFI
+  //  connectWifi(ssid, wifi_pass);
+  //#endif
+  //#ifdef MODEM_GSM
+  //  connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
+  //#endif
+  //
+  rainflow.rainflow(clientID);                            // Set RainFLOW API to use this client modem
+  //  rainflow.connectServer(clientID, username, password); // Connects to RainFLOW Server
 
   Runner.init();
   Runner.addTask(publishDataScheduler);
   Runner.addTask(checkMode);
-  checkMode.enable();
+  Runner.addTask(rainfallReset);
+  rainfallReset.enable();
   modeCheck();
 }
 
 void loop() {
   Runner.execute();
   rainflow.keepAlive();
-//  ArduinoOTA.handle();
 }
