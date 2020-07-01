@@ -284,7 +284,7 @@ void connectWifi(const char* ssid, const char* password) {
     }
   }
 
-  wait(1000);
+  wait(5000);
 }
 
 void disconnectWifi() {
@@ -580,7 +580,6 @@ void getData() {
 }
 
 void publishData() {
-  indicatorLED(true);
   getData();
 
 #ifdef MODEM_WIFI
@@ -592,8 +591,8 @@ void publishData() {
   connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
   gprsConnect();
 #endif
-
- //  rainflow.rainflow(client);                                    // Sets which network interface to be used by the RainFLOW API
+  indicatorLED(true);
+  //  rainflow.rainflow(client);                                    // Sets which network interface to be used by the RainFLOW API
   rainflow.connectServer(clientID, username, password);         // Connects to RainFLOW Server
   rainflow.publishData(clientID, username, password, streamID); // Publishes the data to RainFLOW server
 
