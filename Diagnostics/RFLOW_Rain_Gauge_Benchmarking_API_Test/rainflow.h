@@ -4,7 +4,7 @@
 #include <HardwareSerial.h>
 #include <ArduinoJson.h>
 //#include "PubSubClient.h
-#include <AsyncMqttClient.h>
+#include "AsyncMqttClient.h"
 extern "C" {
   #include "freertos/FreeRTOS.h"
   #include "freertos/timers.h"
@@ -16,12 +16,12 @@ extern "C" {
 #define DEBUG_PRINT(x)
 #endif
 
-#if defined (ESP8266) || defined (ESP32)
-#include <functional>
-#define MQTT_CALLBACK_SIGN std::function<void(String)> mqttCallback
-#else
-#define MQTT_CALLBACK_SIGN void (*mqttCallback)(String)
-#endif
+// #if defined (ESP8266) || defined (ESP32)
+// #include <functional>
+// #define MQTT_CALLBACK_SIGN std::function<void(String)> mqttCallback
+// #else
+// #define MQTT_CALLBACK_SIGN void (*mqttCallback)(String)
+// #endif
 
 
 class RainFLOW {
@@ -30,22 +30,22 @@ class RainFLOW {
 
     AsyncMqttClient rainflowMQTT;    // Instance Creation of MQTT Client
     DynamicJsonDocument payloadData;
-    MQTT_CALLBACK_SIGN;
+    // MQTT_CALLBACK_SIGN;
     
 
   public:
-    RainFLOW() : payloadData(1024) {}   //JSON Containing Array
+    RainFLOW() : payloadData(2048) {}   //JSON Containing Array
     JsonObject payload_Data = payloadData.createNestedObject("data");
     void connectServer(const char* clientID, const char* username, const char* password);
-    bool connectMqtt(const char* clientID, const char* username, const char* password);
-    void callback(char* topic, byte * payload, unsigned int len);
-    RainFLOW& setCallback(MQTT_CALLBACK_SIGN);
+    // bool connectMqtt(const char* clientID, const char* username, const char* password);
+    // void callback(char* topic, byte * payload, unsigned int len);
+    // RainFLOW& setCallback(MQTT_CALLBACK_SIGN);
     void addData(const char* dataName, String dataPayload, String dataTime);
     void publishData(const char* clientID, const char* username, const char* password, const char* streamID);
-    void rainflowCallback(char* topic, byte* payload, unsigned int len);
-    void rainflow(const char* clientID);
+    // void rainflowCallback(char* topic, byte* payload, unsigned int len);
+    void rainflow(const char* clientID, const char* username, const char* password);
     void disconnect();
-    void keepAlive();
+    // void keepAlive();
     void wait(unsigned long interval);
 
 };
