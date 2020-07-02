@@ -69,10 +69,10 @@ RTC_DATA_ATTR float raftHeight = 0; // Set original Height
 float floodDepth = 0;               // Water level
 
 // RAFT Details
-const char *clientID = "9e1a6932497961e283b991f2e69ff9aa2ea9";
-const char *username = "9e1a6932497961e283b991f2e69ff9aa2ea9";
-const char *password = "2ebb99119f9293490b10e39b4b2bb3699f94";
-const char *streamID = "RGAPI";
+const char *clientID = "";
+const char *username = "";
+const char *password = "";
+const char *streamID = "";
 
 RTC_DATA_ATTR int bootCount = 0;
 //int incomingByte = 0;
