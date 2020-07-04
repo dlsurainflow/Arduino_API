@@ -34,7 +34,7 @@ class RainFLOW {
     
 
   public:
-    RainFLOW() : payloadData(2048) {}   //JSON Containing Array
+    RainFLOW() : payloadData(1024) {}   //JSON Containing Array
     JsonObject payload_Data = payloadData.createNestedObject("data");
     void connectServer(const char* clientID, const char* username, const char* password);
     // bool connectMqtt(const char* clientID, const char* username, const char* password);

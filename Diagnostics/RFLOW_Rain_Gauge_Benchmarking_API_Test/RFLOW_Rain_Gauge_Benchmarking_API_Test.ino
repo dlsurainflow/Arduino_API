@@ -69,10 +69,10 @@ RTC_DATA_ATTR float raftHeight = 0; // Set original Height
 float floodDepth = 0;               // Water level
 
 // RAFT Details
-const char *clientID = "";
-const char *username = "";
-const char *password = "";
-const char *streamID = "";
+const char *clientID = "9e1a6932497961e283b991f2e69ff9aa2ea9";
+const char *username = "9e1a6932497961e283b991f2e69ff9aa2ea9";
+const char *password = "2ebb99119f9293490b10e39b4b2bb3699f94";
+const char *streamID = "RGAPI";
 
 RTC_DATA_ATTR int bootCount = 0;
 //int incomingByte = 0;
@@ -101,9 +101,9 @@ TinyGPSPlus gps;
 HardwareSerial SerialGPS(1);
 //NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
 
-Task publishDataScheduler(2 * 60e3, TASK_FOREVER, &publishData);  // Every 10 minutes -10min*60seconds*1000
-Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);               // Every 5 minutes
-Task rainfallReset(5 * 60e3, TASK_FOREVER, &rainfallAmountReset); // Every 5 minutes
+Task publishDataScheduler(19 * 60e3, TASK_FOREVER, &publishData);   // Every 10 minutes -10min*60seconds*1000
+Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);                 // Every 5 minutes
+Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset);  // Every 5 minutes
 
 //Task publishDataScheduler(1, TASK_FOREVER, &publishData);
 //Task checkMode(2, TASK_FOREVER, &modeCheck);
@@ -140,6 +140,8 @@ void IRAM_ATTR tippingBucket()
     DEBUG_PRINT("Tip Count:" + String(tipCount));
 
     lastDetectedTipMillis = millis();
+    // Serial.println("Rainfall rate:" + String(rainfallRate(),2));
+    // Serial.println("Rainfall Amount:" + String(rainfallAmount(),2));
 
     portEXIT_CRITICAL_ISR(&mux);
   }
@@ -187,24 +189,25 @@ void rainfallAmountReset()
     lastDetectedTipMillis2 = 0;
     rainGaugeDate = gps.date.day();
   }
+  // if (lastDetectedTipMillis >= )
 }
 
-float rainfallRate()
+double rainfallRate()
 {
   if (tipCount == 0)
     return 0;
   else
   {
-    DEBUG_PRINT(String(tipAmount * 3.6e6 / tipTime));
-    return tipAmount * 3.6e6 / tipTime;
+    // DEBUG_PRINT(String(tipAmount * 3.6e6 / tipTime));
+    return (double)((double)tipAmount * (double) 3.6e6 / (double) (tipTime/1.00));
   }
   //return tipAmount / 3600000;
 }
 
-float rainfallAmount()
+double rainfallAmount()
 {
-  DEBUG_PRINT(String(tipCount * tipAmount));
-  return tipCount * tipAmount;
+  // DEBUG_PRINT(String((float)(tipCount * tipAmount)));
+  return (double)((double)tipCount * tipAmount);
 }
 
 float rainfallRate2()
@@ -554,7 +557,7 @@ void mode_ContinuousMonitoring()
   if (!publishDataScheduler.isEnabled() || currentMode != 1)
   {
     publishDataScheduler.disable();
-    publishDataScheduler.setInterval(1 * 60e3);
+    publishDataScheduler.setInterval(5 * 60e3);
     publishDataScheduler.enable();
   }
   if (!checkMode.isEnabled() || currentMode != 1)
@@ -637,44 +640,32 @@ void getData()
   // DEBUG_PRINT("tipCount:" + String(tipCount) + " tipTime:" + String(tipTime));
   // DEBUG_PRINT("tipCount2:" + String(tipCount2) + " tipTime2:" + String(tipTime2));
 
-  rainflow.addData("LAT1", String(gps.location.lat()), unixTime);
+  rainflow.addData("LAT1", String(gps.location.lat(), 6), unixTime);
   DEBUG_PRINT("LAT1 SUCCESS: ");
-  rainflow.addData("LNG1", String(gps.location.lng()), unixTime);
+  DEBUG_PRINT(xPortGetFreeHeapSize());
+  //(0, (void *)addr, 4, ESP_WATCHPOINT_STORE);
+  rainflow.addData("LNG1", String(gps.location.lng(), 6), unixTime);
   DEBUG_PRINT("LNG1 SUCCESS: ");
-  rainflow.addData("ALT1", String(getAltitude()), unixTime);
+  rainflow.addData("ALT1", String(getAltitude(), 2), unixTime);
   DEBUG_PRINT("ALT1 SUCCESS: " + String(getAltitude()));
   rainflow.addData("FD1", "0", unixTime);
   DEBUG_PRINT("FD1 SUCCESS: 0");
-  rainflow.addData("RR1", String(rainfallRate()), unixTime);
-  DEBUG_PRINT("RR1 SUCCESS: " + String(rainfallRate()));
-  rainflow.addData("RA1", String(rainfallAmount()), unixTime);
-  DEBUG_PRINT("RA1 SUCCESS: " + String(rainfallAmount()));
-  rainflow.addData("RR2", String(rainfallRate2()), unixTime);
-  DEBUG_PRINT("RR2 SUCCESS: " + String(rainfallRate2()));
-  rainflow.addData("RA2", String(rainfallAmount2()), unixTime);
-  DEBUG_PRINT("RA21 SUCCESS: " + String(rainfallAmount2()));
-  rainflow.addData("TMP1", String(getTemperature()), unixTime);
+  // rainflow.addData("RR1", String(rainfallRate(),2), unixTime);
+  // DEBUG_PRINT("RR1 SUCCESS: " + String(rainfallRate()));
+  // rainflow.addData("RA1", String(rainfallAmount(),2), unixTime);
+  // DEBUG_PRINT("RA1 SUCCESS: " + String(rainfallAmount()));
+  // rainflow.addData("RR2", String(rainfallRate2(),2), unixTime);
+  // DEBUG_PRINT("RR2 SUCCESS: " + String(rainfallRate2()));
+  // rainflow.addData("RA2", String(rainfallAmount2(),2), unixTime);
+  // DEBUG_PRINT("RA21 SUCCESS: " + String(rainfallAmount2()));
+  rainflow.addData("TMP1", String(getTemperature(),2), unixTime);
   DEBUG_PRINT("TMP1 SUCCESS: " + String(getTemperature()));
-  rainflow.addData("PR1", String(getPressure()), unixTime);
+  rainflow.addData("PR1", String(getPressure(),2), unixTime);
   DEBUG_PRINT("PR1 SUCCESS: " + String(getPressure()));
-  rainflow.addData("HU1", String(getHumidity()), unixTime);
-  DEBUG_PRINT("HU1 SUCCESS: " + String(getHumidity()));
-  rainflow.addData("BV1", String(getBatteryVoltage()), unixTime);
+  rainflow.addData("HU1", String(getHumidity(),2), unixTime);
+  DEBUG_PRINT("HU1 SUCCESS: " + String(getHumidity(),2));
+  rainflow.addData("BV1", String(getBatteryVoltage(),2), unixTime);
   DEBUG_PRINT("BV1 SUCCESS: " + String(getBatteryVoltage()));
-
-  //  rainflow.addData("Alt_GPS", String(gps.altitude.meters()), unixTime);
-  //  rainflow.addData("Alt_BME", String(getAltitude()), unixTime);
-  //  rainflow.addData("Humidity", String(getHumidity()), unixTime);
-  //  rainflow.addData("Temperature", String(getTemperature()), unixTime);
-  //  rainflow.addData("Pressure", String(getPressure()), unixTime);
-  //  rainflow.addData("BattVoltage", String(getBatteryVoltage()), unixTime);
-
-  //#ifdef MODEM_WIFI
-  //  rainflow.addData("RSSI_modem_2", String(getRSSI(ssid)), unixTime);
-  //#endif
-  //#ifdef MODEM_GSM
-  //  rainflow.addData("RSSI_modem_2", String(modem.getSignalQuality()), unixTime);
-  //#endif
 }
 
 void publishData()
