@@ -1,52 +1,49 @@
 //  -- RAFT DEFINTIONS
-#define MICRO_BAUD_RATE 115200 // Microcontroller Serial Port Baud Rate
-#define BATTMAXVOLT 4.2        // Maximum Battery Voltage
-#define BATTMINVOLT 3.2        // Minimum Battery Voltage
-#define BATTERYPIN 34          // Battery PIN
-#define BATTERYRATIO 0.7709    // Battery voltage divider ratio
-#define LEDPin LED_BUILTIN
-//#define BATTERYRATIO 0.71825    // Battery voltage divider
-#define LED 23                 // LED Indicator Pin
-#define uS_TO_S_FACTOR 1000000 // Conversion factor for micro seconds to seconds */
-#define MODEM_WIFI             // Use Wifi for Data Telemetry
+#define MICRO_BAUD_RATE 115200        // Microcontroller Serial Port Baud Rate
+#define BATTMAXVOLT 4.2               // Maximum Battery Voltage
+#define BATTMINVOLT 3.2               // Minimum Battery Voltage
+#define BATTERYPIN 34                 // Battery PIN
+#define BATTERYRATIO 0.7709           // Battery voltage divider ratio
+#define LEDPin LED_BUILTIN      
+#define LED 23                        // LED Indicator Pin
+#define uS_TO_S_FACTOR 1000000        // Conversion factor for micro seconds to seconds */
+#define MODEM_WIFI                    // Use Wifi for Data Telemetry
 //#define MODEM_GSM               // Use GSM/GPRS for Data Telemetry
-#define DEBUG_MODE // DEBUG MODE ON
+#define DEBUG_MODE                    // DEBUG MODE ON
 // -- GSM DEFINITIONS
-#define TINY_GSM_MODEM_SIM800 // GSM/GPRS Module Model
-#define GSM_RX 17             // GSM/GPRS Module RX Pin
-#define GSM_TX 16             // GSM/GPRS Module TX Pin
-#define GSM_BAUD 9600         // GSM/GPRS Module Baud Rate
+#define TINY_GSM_MODEM_SIM800         // GSM/GPRS Module Model
+#define GSM_RX 17                     // GSM/GPRS Module RX Pin
+#define GSM_TX 16                     // GSM/GPRS Module TX Pin
+#define GSM_BAUD 9600                 // GSM/GPRS Module Baud Rate
 // -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
-#define US_RX 14         // Ultrasonic Module RX Pin
-#define US_TX 12         // Ultrasonic Module TX
-#define US_MAXHEIGHT 600 // Ultrasonic Max Height (cm)
+#define US_RX 14                      // Ultrasonic Module RX Pin
+#define US_TX 12                      // Ultrasonic Module TX
+#define US_MAXHEIGHT 600              // Ultrasonic Max Height (cm)
 // -- GPS MODULE DEFINITIONS
-#define GPS_RX 25     // GSM/GPRS Module RX Pin
-#define GPS_TX 26     // GSM/GPRS Module TX Pin
-#define GPS_BAUD 9600 // GSM/GPRS Module TX Pin
+#define GPS_RX 25                     // GSM/GPRS Module RX Pin
+#define GPS_TX 26                     // GSM/GPRS Module TX Pin
+#define GPS_BAUD 9600                 // GSM/GPRS Module TX Pin
 // -- RAIN GAUGE DEFINITIONS
-#define rainGaugePin 35              // Rain Guage 1 Pin
-#define rainGaugePin2 32             // Rain Gauge 2
-#define GPIO_PIN_BITMASK 0x900000000 // (2^35 + 2^32)Hex
-#define tipAmount 0.3636             // 0.3636 mm of rainfall per tip
-#define tipAmount2 0.2555            //S
+#define rainGaugePin 35               // Rain Guage 1 Pin
+#define rainGaugePin2 32              // Rain Gauge 2
+#define GPIO_PIN_BITMASK 0x900000000  // (2^35 + 2^32)Hex
+#define tipAmount 0.3636              // 0.3636 mm of rainfall per tip
+#define tipAmount2 0.2555             //S
 // -- BAROMETER DEFINITIONS
 #define SEALEVELPRESSURE_HPA (1013.25) // Change to mean sea level pressure in your area
 
 #include <Adafruit_BME280.h>
+#include <AsyncMqttClient.h>
 #include <HardwareSerial.h>
 #include <TaskScheduler.h>
 #include <ArduinoJson.h>
 #include <TinyGPS++.h>
-// #include <Smoothed.h>
-//#include <NewPing.h>
-//#include <NTPClient.h>
+#include <TimeLib.h>
 #include <WiFiUdp.h>
 #include <Time.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <TimeLib.h>
-#include "rainflow.h"
+
 
 #ifdef MODEM_GSM
 #include <TinyGsmClient.h>
@@ -80,18 +77,14 @@ long currentmillis = 0;
 
 int currentMode = 0;
 
-#ifdef MODEM_WIFI
-WiFiClient client;
+#ifdef DEBUG_MODE
+#define DEBUG_PRINT(x) Serial.println(x)
+#else
+#define DEBUG_PRINT(x) Serial.println(x)
 #endif
 
-#ifdef MODEM_GSM
-HardwareSerial SerialGSM(1);
-TinyGsm modem(SerialGSM);
-TinyGsmClient client(modem);
-#endif
-
-RainFLOW rainflow;
-Adafruit_BME280 bme; // I2C
+AsyncMqttClient rainflowMQTT;    // Instance Creation of MQTT Client
+Adafruit_BME280 bme;             // I2C
 
 void publishData();
 void modeCheck();
@@ -119,8 +112,8 @@ Scheduler Runner;
 //  Catachment area = pi*r*r=102.79cm^2
 //  Rainfall per tip = 6.67mL/102.79 = 0.6489mL/tip
 
-RTC_DATA_ATTR int tipCount = 0, tipCount2 = 0;                                                                        // Total Amount of Tips
-// RTC_DATA_ATTR int tipCount2 = 0;                                                                       // Total Amount of Tips
+RTC_DATA_ATTR int tipCount = 0, tipCount2 = 0;                                                         // Total Amount of Tips
+// RTC_DATA_ATTR int tipCount2 = 0;                                                                    // Total Amount of Tips
 RTC_DATA_ATTR int rainGaugeDate = 0;                                                                   // Rain Gauge Date
 static unsigned long lastDetectedTipMillis = 0, tipTime = 0, lastDetectedTipMillis2 = 0, tipTime2 = 0; // Time of Last Rain Guage Tip
 
@@ -514,6 +507,138 @@ float getHumidity()
 }
 
 ///////////////////////// END BAROMETRIC SENSOR ///////////////////////
+///////////////////////// MQTT ///////////////////////
+void dataPublish() {
+  DynamicJsonDocument payloadData(1024);
+  String payloadBuffer;
+  String topic;
+  int len;
+
+  payloadData["data_type"] = "event";
+  payloadData["stream_id"] = streamID;
+
+  DEBUG_PRINT("Retrieving data.");
+  String unixTime = getUnixTime();
+  Serial.println(unixTime);
+  // DEBUG_PRINT("tipCount:" + String(tipCount) + " tipTime:" + String(tipTime));
+  // DEBUG_PRINT("tipCount2:" + String(tipCount2) + " tipTime2:" + String(tipTime2));
+  JsonObject payload_Data = payloadData.createNestedObject("data");
+  JsonObject objectLatitude = payload_Data.createNestedObject("LAT1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectLatitude["time"] = unixTime;
+  objectLatitude["value"] = gps.location.lat();
+
+  JsonObject objectLongitude = payload_Data.createNestedObject("LNG1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectLongitude["time"] = unixTime;
+  objectLongitude["value"] = gps.location.lng();
+
+  JsonObject objectAltitude = payload_Data.createNestedObject("ALT1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectAltitude["time"] = unixTime;
+  objectAltitude["value"] = getAltitude();
+
+  JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectFloodDepth["time"] = unixTime;
+  objectFloodDepth["value"] = 0;
+
+  JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectRainRate["time"] = unixTime;
+  objectRainRate["value"] = rainfallRate();
+
+  JsonObject objectRainAmount = payload_Data.createNestedObject("RA1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectRainAmount["time"] = unixTime;
+  objectRainAmount["value"] = rainfallAmount();
+
+  JsonObject objectRainRate2 = payload_Data.createNestedObject("RR2");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectRainRate2["time"] = unixTime;
+  objectRainRate2["value"] = rainfallRate2();
+
+  JsonObject objectRainAmount2 = payload_Data.createNestedObject("RA2");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectRainAmount2["time"] = unixTime;
+  objectRainAmount2["value"] = rainfallAmount2();
+
+  JsonObject objectTemp = payload_Data.createNestedObject("TMP1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectTemp["time"] = unixTime;
+  objectTemp["value"] = getTemperature();
+
+  JsonObject objectPress = payload_Data.createNestedObject("PR1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectPress["time"] = unixTime;
+  objectPress["value"] = getPressure();
+
+  JsonObject objectHumid = payload_Data.createNestedObject("HU1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectHumid["time"] = unixTime;
+  objectHumid["value"] = getHumidity();
+
+  JsonObject objectBatt = payload_Data.createNestedObject("BV1");
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  objectBatt["time"] = unixTime;
+  objectBatt["value"] = getBatteryVoltage();
+
+
+  serializeJson(payloadData, payloadBuffer);
+  topic     =   "RAFT_Data";
+  len       = strlen(payloadBuffer.c_str());                                  // Calculates Payload Size
+  rainflowMQTT.publish(topic.c_str(), 1, false, payloadBuffer.c_str(), len, false, 0);            // Publishes payload to server
+  DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
+  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
+  wait(5000);
+}
+
+void onMqttConnect(bool sessionPresent) {
+  Serial.println("Connected to MQTT.");
+  Serial.print("Session present: ");
+  Serial.println(sessionPresent);
+}
+
+void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
+  Serial.println("Disconnected from MQTT.");
+}
+
+void onMqttSubscribe(uint16_t packetId, uint8_t qos) {
+  Serial.println("Subscribe acknowledged.");
+  Serial.print("  packetId: ");
+  Serial.println(packetId);
+  Serial.print("  qos: ");
+  Serial.println(qos);
+}
+
+void onMqttUnsubscribe(uint16_t packetId) {
+  Serial.println("Unsubscribe acknowledged.");
+  Serial.print("  packetId: ");
+  Serial.println(packetId);
+}
+
+void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
+  Serial.println("Publish received.");
+  Serial.print("  topic: ");
+  Serial.println(topic);
+  Serial.print("  qos: ");
+  Serial.println(properties.qos);
+  Serial.print("  dup: ");
+  Serial.println(properties.dup);
+  Serial.print("  retain: ");
+  Serial.println(properties.retain);
+  Serial.print("  len: ");
+  Serial.println(len);
+  Serial.print("  index: ");
+  Serial.println(index);
+  Serial.print("  total: ");
+  Serial.println(total);
+}
+
+void onMqttPublish(uint16_t packetId) {
+  Serial.println("Publish acknowledged. PacketID:" +String(packetId));
+}
+///////////////////////// END MQTT ///////////////////////
 
 void modeCheck()
 {
@@ -526,18 +651,21 @@ void modeCheck()
   Serial.println("Last Detected Millis: " + String(lastDetectedTipMillis) + " " + String(lastDetectedTipMillis2));
   Serial.println("Current Flood Depeth: " + String(curFloodDepth));
   Serial.println("Current Battery Level: " + String(curBattLevel));
-  if ((curFloodDepth < minFloodDepth) && (lastDetectedTipMillis >= lastTipTime) && (lastDetectedTipMillis2 >= lastTipTime))
-  {
-    mode_Standby();
-  }
-  else if (((curFloodDepth >= minFloodDepth) || (lastDetectedTipMillis < lastTipTime) || (lastDetectedTipMillis2 < lastTipTime)) || (curBattLevel > 20.00))
-  {
-    mode_ContinuousMonitoring();
-  }
-  else if (((curFloodDepth >= minFloodDepth) || (lastDetectedTipMillis < lastTipTime) || (lastDetectedTipMillis2 < lastTipTime)) || (curBattLevel <= 20.00))
-  {
-    mode_BatterySaver();
-  }
+  // mode_Standby();
+  mode_ContinuousMonitoring();
+  // mode_BatterySaver();
+  // if ((curFloodDepth < minFloodDepth) && (lastDetectedTipMillis >= lastTipTime) && (lastDetectedTipMillis2 >= lastTipTime))
+  // {
+  //   mode_Standby();
+  // }
+  // else if (((curFloodDepth >= minFloodDepth) || (lastDetectedTipMillis < lastTipTime) || (lastDetectedTipMillis2 < lastTipTime)) || (curBattLevel > 20.00))
+  // {
+  //   mode_ContinuousMonitoring();
+  // }
+  // else if (((curFloodDepth >= minFloodDepth) || (lastDetectedTipMillis < lastTipTime) || (lastDetectedTipMillis2 < lastTipTime)) || (curBattLevel <= 20.00))
+  // {
+  //   mode_BatterySaver();
+  // }
 }
 
 void mode_Standby()
@@ -548,7 +676,7 @@ void mode_Standby()
   publishDataScheduler.disable();
   checkMode.disable();
   publishData();
-  sleep(minutesToSleep * 60);
+  sleep(minutesToSleep * 30);
 }
 
 void mode_ContinuousMonitoring()
@@ -593,7 +721,7 @@ void sleep(int time_to_sleep)
   esp_sleep_enable_ext1_wakeup(GPIO_PIN_BITMASK, ESP_EXT1_WAKEUP_ALL_LOW);
   esp_sleep_enable_timer_wakeup(time_to_sleep * uS_TO_S_FACTOR);
   DEBUG_PRINT("Sleeping for " + String(time_to_sleep) + " Seconds");
-  rainflow.disconnect();
+  rainflowMQTT.disconnect();
   Serial.println("Disconnected from server.");
   wait(100);
   Serial.flush();
@@ -632,53 +760,18 @@ void wait(unsigned long interval)
   }
 }
 
-void getData()
-{
-  DEBUG_PRINT("Retrieving data.");
-  String unixTime = getUnixTime();
-  Serial.println(unixTime);
-  // DEBUG_PRINT("tipCount:" + String(tipCount) + " tipTime:" + String(tipTime));
-  // DEBUG_PRINT("tipCount2:" + String(tipCount2) + " tipTime2:" + String(tipTime2));
-
-  rainflow.addData("LAT1", String(gps.location.lat(), 6), unixTime);
-  DEBUG_PRINT("LAT1 SUCCESS: ");
-  DEBUG_PRINT(xPortGetFreeHeapSize());
-  //(0, (void *)addr, 4, ESP_WATCHPOINT_STORE);
-  rainflow.addData("LNG1", String(gps.location.lng(), 6), unixTime);
-  DEBUG_PRINT("LNG1 SUCCESS: ");
-  rainflow.addData("ALT1", String(getAltitude(), 2), unixTime);
-  DEBUG_PRINT("ALT1 SUCCESS: " + String(getAltitude()));
-  rainflow.addData("FD1", "0", unixTime);
-  DEBUG_PRINT("FD1 SUCCESS: 0");
-  // rainflow.addData("RR1", String(rainfallRate(),2), unixTime);
-  // DEBUG_PRINT("RR1 SUCCESS: " + String(rainfallRate()));
-  // rainflow.addData("RA1", String(rainfallAmount(),2), unixTime);
-  // DEBUG_PRINT("RA1 SUCCESS: " + String(rainfallAmount()));
-  // rainflow.addData("RR2", String(rainfallRate2(),2), unixTime);
-  // DEBUG_PRINT("RR2 SUCCESS: " + String(rainfallRate2()));
-  // rainflow.addData("RA2", String(rainfallAmount2(),2), unixTime);
-  // DEBUG_PRINT("RA21 SUCCESS: " + String(rainfallAmount2()));
-  rainflow.addData("TMP1", String(getTemperature(),2), unixTime);
-  DEBUG_PRINT("TMP1 SUCCESS: " + String(getTemperature()));
-  rainflow.addData("PR1", String(getPressure(),2), unixTime);
-  DEBUG_PRINT("PR1 SUCCESS: " + String(getPressure()));
-  rainflow.addData("HU1", String(getHumidity(),2), unixTime);
-  DEBUG_PRINT("HU1 SUCCESS: " + String(getHumidity(),2));
-  rainflow.addData("BV1", String(getBatteryVoltage(),2), unixTime);
-  DEBUG_PRINT("BV1 SUCCESS: " + String(getBatteryVoltage()));
-}
 
 void publishData()
 {
   indicatorLED(true);
   bool connected = false;
-  getData();
 
 #ifdef MODEM_WIFI
 
   if (WiFi.status() != WL_CONNECTED)
   {
     connectWifi(ssid, wifi_pass);
+    wait(5000);
   }
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -692,10 +785,10 @@ void publishData()
 
   if (connected == true)
   {
-    //  rainflow.rainflow(client);                                    // Sets which network interface to be used by the RainFLOW API
-    rainflow.connectServer(clientID, username, password);         // Connects to RainFLOW Server
-    rainflow.publishData(clientID, username, password, streamID); // Publishes the data to RainFLOW server
-    rainflow.disconnect();
+    rainflowMQTT.connect();
+    wait(5000);
+    if (rainflowMQTT.connected()) dataPublish();
+    rainflowMQTT.disconnect();   
   }
   
 #ifdef MODEM_WIFI
@@ -763,8 +856,18 @@ void setup()
   //  connectGSM(GSM_BAUD, GSM_TX, GSM_RX, apn, gprsUser, gprsPass);
   //#endif
   //
-  rainflow.rainflow(clientID, username, password); // Set RainFLOW API to use this client modem
+  // rainflow.rainflow(clientID, username, password); // Set RainFLOW API to use this client modem
   //  rainflow.connectServer(clientID, username, password); // Connects to RainFLOW Server
+
+  rainflowMQTT.setClientId(clientID);
+  rainflowMQTT.setCredentials(username, password);
+  rainflowMQTT.setServer("rainflow.live", 1883);
+  rainflowMQTT.onConnect(onMqttConnect);
+  rainflowMQTT.onDisconnect(onMqttDisconnect);
+  rainflowMQTT.onSubscribe(onMqttSubscribe);
+  rainflowMQTT.onUnsubscribe(onMqttUnsubscribe);
+  rainflowMQTT.onMessage(onMqttMessage);
+  rainflowMQTT.onPublish(onMqttPublish);
 
   Runner.init();
   Runner.addTask(publishDataScheduler);
