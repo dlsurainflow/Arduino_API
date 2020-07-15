@@ -1,35 +1,34 @@
 //  -- RAFT DEFINTIONS
-#define MICRO_BAUD_RATE 115200        // Microcontroller Serial Port Baud Rate
-#define BATTMAXVOLT 4.2               // Maximum Battery Voltage
-#define BATTMINVOLT 3.2               // Minimum Battery Voltage
-#define BATTERYPIN 34                 // Battery PIN
-#define BATTERYRATIO 0.7709           // Battery voltage divider ratio
-#define LEDPin LED_BUILTIN      
-#define LED 23                        // LED Indicator Pin
-#define uS_TO_S_FACTOR 1000000        // Conversion factor for micro seconds to seconds */
-#define MODEM_WIFI                    // Use Wifi for Data Telemetry
-//#define MODEM_GSM               // Use GSM/GPRS for Data Telemetry
-#define DEBUG_MODE                    // DEBUG MODE ON
-// -- GSM DEFINITIONS
-#define TINY_GSM_MODEM_SIM800         // GSM/GPRS Module Model
-#define GSM_RX 17                     // GSM/GPRS Module RX Pin
-#define GSM_TX 16                     // GSM/GPRS Module TX Pin
-#define GSM_BAUD 9600                 // GSM/GPRS Module Baud Rate
-// -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
-#define US_RX 14                      // Ultrasonic Module RX Pin
-#define US_TX 12                      // Ultrasonic Module TX
-#define US_MAXHEIGHT 600              // Ultrasonic Max Height (cm)
-// -- GPS MODULE DEFINITIONS
-#define GPS_RX 25                     // GSM/GPRS Module RX Pin
-#define GPS_TX 26                     // GSM/GPRS Module TX Pin
-#define GPS_BAUD 9600                 // GSM/GPRS Module TX Pin
-// -- RAIN GAUGE DEFINITIONS
-#define rainGaugePin 35               // Rain Guage 1 Pin
-#define rainGaugePin2 32              // Rain Gauge 2
-#define GPIO_PIN_BITMASK 0x900000000  // (2^35 + 2^32)Hex
-#define tipAmount 0.3636              // 0.3636 mm of rainfall per tip
-#define tipAmount2 0.2555             //S
-// -- BAROMETER DEFINITIONS
+#define MICRO_BAUD_RATE 115200 // Microcontroller Serial Port Baud Rate
+#define BATTMAXVOLT 4.2        // Maximum Battery Voltage
+#define BATTMINVOLT 3.6        // Minimum Battery Voltage
+#define BATTERYPIN 34          // Battery PIN
+#define BATTERYRATIO 0.78      // Battery voltage divider ratio
+#define LEDPin LED_BUILTIN     // LED Indicator Pin
+#define uS_TO_S_FACTOR 1000000 // Conversion factor for micro seconds to seconds */
+#define MODEM_WIFI             // Use Wifi for Data Telemetry
+//#define MODEM_GSM                     // Use GSM/GPRS for Data Telemetry
+#define DEBUG_MODE // DEBUG MODE ON
+//* -- GSM DEFINITIONS
+#define TINY_GSM_MODEM_SIM800 // GSM/GPRS Module Model
+#define GSM_RX 17             // GSM/GPRS Module RX Pin
+#define GSM_TX 16             // GSM/GPRS Module TX Pin
+#define GSM_BAUD 9600         // GSM/GPRS Module Baud Rate
+//* -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
+#define US_RX 14         // Ultrasonic Module RX Pin
+#define US_TX 12         // Ultrasonic Module TX
+#define US_MAXHEIGHT 600 // Ultrasonic Max Height (cm)
+//* -- GPS MODULE DEFINITIONS
+#define GPS_RX 25     // GSM/GPRS Module RX Pin
+#define GPS_TX 26     // GSM/GPRS Module TX Pin
+#define GPS_BAUD 9600 // GSM/GPRS Module TX Pin
+//* -- RAIN GAUGE DEFINITIONS
+#define rainGaugePin 35              // Rain Guage 1 Pin
+#define rainGaugePin2 32             // Rain Gauge 2
+#define GPIO_PIN_BITMASK 0x800000000 // (2^35 + 2^32)Hex
+#define tipAmount 0.3636             // 0.3636 mm of rainfall per tip
+#define tipAmount2 0.2555            // S
+//* -- BAROMETER DEFINITIONS
 #define SEALEVELPRESSURE_HPA (1013.25) // Change to mean sea level pressure in your area
 
 #include <Adafruit_BME280.h>
@@ -44,7 +43,6 @@
 #include <Wire.h>
 #include <SPI.h>
 
-
 #ifdef MODEM_GSM
 #include <TinyGsmClient.h>
 #endif
@@ -52,39 +50,39 @@
 #include <WiFi.h>
 #endif
 
-//WiFi Access Point Details
+//* WiFi Access Point Details
 const char *ssid = "Hidden Network";
 const char *wifi_pass = "mmbmh15464";
 
-//GSM Internet Details
+//* GSM Internet Details
 const char *apn = "smartlte";
 const char *gprsUser = "";
 const char *gprsPass = "";
 
-// Ultrasonic Sensor Variables
+//* Ultrasonic Sensor Variables
 RTC_DATA_ATTR float raftHeight = 0; // Set original Height
 float floodDepth = 0;               // Water level
 
-// RAFT Details
-const char *clientID = "9e1a6932497961e283b991f2e69ff9aa2ea9";
-const char *username = "9e1a6932497961e283b991f2e69ff9aa2ea9";
-const char *password = "2ebb99119f9293490b10e39b4b2bb3699f94";
+//* RAFT Details
+const char *clientID = "bbb1691accc836be0958909cf8426e22b246";
+const char *username = "bbb1691accc836be0958909cf8426e22b246";
+const char *password = "aeff9fb2b53b2eba1b2ca8b218514615f995";
 const char *streamID = "RGAPI";
 
 RTC_DATA_ATTR int bootCount = 0;
 //int incomingByte = 0;
 long currentmillis = 0;
 
-int currentMode = 0;
+RTC_DATA_ATTR int currentMode = 0;
 
 #ifdef DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.println(x)
 #else
-#define DEBUG_PRINT(x) Serial.println(x)
+#define DEBUG_PRINT(x)
 #endif
 
-AsyncMqttClient rainflowMQTT;    // Instance Creation of MQTT Client
-Adafruit_BME280 bme;             // I2C
+AsyncMqttClient rainflowMQTT; // Instance Creation of MQTT Client
+Adafruit_BME280 bme;          // I2C
 
 void publishData();
 void modeCheck();
@@ -94,15 +92,11 @@ TinyGPSPlus gps;
 HardwareSerial SerialGPS(1);
 //NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
 
-Task publishDataScheduler(19 * 60e3, TASK_FOREVER, &publishData);   // Every 10 minutes -10min*60seconds*1000
-Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);                 // Every 5 minutes
-Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset);  // Every 5 minutes
+Task publishDataScheduler(19 * 60e3, TASK_FOREVER, &publishData);  // Every 10 minutes -10min*60seconds*1000
+Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);                // Every 5 minutes
+Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset); // Every 5 minutes
 
-//Task publishDataScheduler(1, TASK_FOREVER, &publishData);
-//Task checkMode(2, TASK_FOREVER, &modeCheck);
 WiFiUDP ntpUDP;
-//NTPClient timeClient(ntpUDP);
-//Smoothed<float> waterDepthSensor;
 Scheduler Runner;
 
 /////////////////////////  RAIN GAUGE  ///////////////////////
@@ -113,7 +107,6 @@ Scheduler Runner;
 //  Rainfall per tip = 6.67mL/102.79 = 0.6489mL/tip
 
 RTC_DATA_ATTR int tipCount = 0, tipCount2 = 0;                                                         // Total Amount of Tips
-// RTC_DATA_ATTR int tipCount2 = 0;                                                                    // Total Amount of Tips
 RTC_DATA_ATTR int rainGaugeDate = 0;                                                                   // Rain Gauge Date
 static unsigned long lastDetectedTipMillis = 0, tipTime = 0, lastDetectedTipMillis2 = 0, tipTime2 = 0; // Time of Last Rain Guage Tip
 
@@ -187,12 +180,13 @@ void rainfallAmountReset()
 
 double rainfallRate()
 {
-  if (tipCount == 0)
+  if (tipCount == 0 || tipTime == 0)
     return 0;
   else
   {
     // DEBUG_PRINT(String(tipAmount * 3.6e6 / tipTime));
-    return (double)((double)tipAmount * (double) 3.6e6 / (double) (tipTime/1.00));
+    Serial.println("TipTime: " + String(tipTime));
+    return (double)((double)tipAmount * (double)3.6e6 / (double)(tipTime / 1.00));
   }
   //return tipAmount / 3600000;
 }
@@ -209,14 +203,14 @@ float rainfallRate2()
     return 0;
   else
   {
-    DEBUG_PRINT(String(tipAmount2 * 3.6e6 / tipTime2));
+    // DEBUG_PRINT(String(tipAmount2 * 3.6e6 / tipTime2));
     return tipAmount2 * 3.6e6 / tipTime2;
   }
 }
 
 float rainfallAmount2()
 {
-  DEBUG_PRINT(String(tipCount2 * tipAmount2));
+  // DEBUG_PRINT(String(tipCount2 * tipAmount2));
   return tipCount2 * tipAmount2;
 }
 /////////////////////////  END RAIN GAUGE  ///////////////////////
@@ -317,7 +311,7 @@ void connectWifi(const char *ssid, const char *password)
     }
   }
 
-  wait(5000);
+  wait(10000);
 }
 
 void disconnectWifi()
@@ -368,6 +362,28 @@ String getUnixTime()
   te.Year = gps.date.year() - (uint32_t)1970;
   unixTime = makeTime(te);
   return (String)unixTime;
+}
+
+void sendPacket(byte *packet, byte len)
+{
+  for (byte i = 0; i < len; i++)
+  {
+    SerialGPS.write(packet[i]); // GPS is HardwareSerial
+  }
+}
+
+void GPS_powerSaveMode()
+{
+  DEBUG_PRINT("Setting GPS to Power Save Mode (PSM).");
+  byte packet[] = {0xB5, 0x62, 0x06, 0x11, 0x02, 0x00, 0x08, 0x01, 0x22, 0x92};
+  sendPacket(packet, sizeof(packet));
+}
+
+void GPS_maxPerformanceMode()
+{
+  DEBUG_PRINT("Setting GPS to Power Save Mode (PSM).");
+  byte packet[] = {0xB5, 0x62, 0x06, 0x11, 0x02, 0x00, 0x08, 0x00, 0x21, 0x91};
+  sendPacket(packet, sizeof(packet));
 }
 
 static void smartDelay(unsigned long ms)
@@ -508,7 +524,8 @@ float getHumidity()
 
 ///////////////////////// END BAROMETRIC SENSOR ///////////////////////
 ///////////////////////// MQTT ///////////////////////
-void dataPublish() {
+void dataPublish()
+{
   DynamicJsonDocument payloadData(1024);
   String payloadBuffer;
   String topic;
@@ -519,124 +536,97 @@ void dataPublish() {
 
   DEBUG_PRINT("Retrieving data.");
   String unixTime = getUnixTime();
-  Serial.println(unixTime);
-  // DEBUG_PRINT("tipCount:" + String(tipCount) + " tipTime:" + String(tipTime));
-  // DEBUG_PRINT("tipCount2:" + String(tipCount2) + " tipTime2:" + String(tipTime2));
+  DEBUG_PRINT("Current time: " + String(unixTime));
+
   JsonObject payload_Data = payloadData.createNestedObject("data");
   JsonObject objectLatitude = payload_Data.createNestedObject("LAT1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectLatitude["time"] = unixTime;
   objectLatitude["value"] = gps.location.lat();
 
   JsonObject objectLongitude = payload_Data.createNestedObject("LNG1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectLongitude["time"] = unixTime;
   objectLongitude["value"] = gps.location.lng();
 
   JsonObject objectAltitude = payload_Data.createNestedObject("ALT1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectAltitude["time"] = unixTime;
   objectAltitude["value"] = getAltitude();
 
   JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectFloodDepth["time"] = unixTime;
   objectFloodDepth["value"] = 0;
 
   JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectRainRate["time"] = unixTime;
   objectRainRate["value"] = rainfallRate();
 
   JsonObject objectRainAmount = payload_Data.createNestedObject("RA1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectRainAmount["time"] = unixTime;
   objectRainAmount["value"] = rainfallAmount();
 
   JsonObject objectRainRate2 = payload_Data.createNestedObject("RR2");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectRainRate2["time"] = unixTime;
   objectRainRate2["value"] = rainfallRate2();
 
   JsonObject objectRainAmount2 = payload_Data.createNestedObject("RA2");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectRainAmount2["time"] = unixTime;
   objectRainAmount2["value"] = rainfallAmount2();
 
   JsonObject objectTemp = payload_Data.createNestedObject("TMP1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectTemp["time"] = unixTime;
   objectTemp["value"] = getTemperature();
 
   JsonObject objectPress = payload_Data.createNestedObject("PR1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectPress["time"] = unixTime;
   objectPress["value"] = getPressure();
 
   JsonObject objectHumid = payload_Data.createNestedObject("HU1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectHumid["time"] = unixTime;
   objectHumid["value"] = getHumidity();
 
   JsonObject objectBatt = payload_Data.createNestedObject("BV1");
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
   objectBatt["time"] = unixTime;
   objectBatt["value"] = getBatteryVoltage();
 
-
   serializeJson(payloadData, payloadBuffer);
-  topic     =   "RAFT_Data";
-  len       = strlen(payloadBuffer.c_str());                                  // Calculates Payload Size
-  rainflowMQTT.publish(topic.c_str(), 1, false, payloadBuffer.c_str(), len, false, 0);            // Publishes payload to server
+  topic = "RAFT_Data";
+  len = strlen(payloadBuffer.c_str());                                                 // Calculates Payload Size
+  rainflowMQTT.publish(topic.c_str(), 2, false, payloadBuffer.c_str(), len, false, 0); // Publishes payload to server
   DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
-  Serial.println("payloadData Mem:" + String(payloadData.memoryUsage()));
-  wait(5000);
+  DEBUG_PRINT("payloadData Mem:" + String(payloadData.memoryUsage()));
+  wait(2000);
 }
 
-void onMqttConnect(bool sessionPresent) {
-  Serial.println("Connected to MQTT.");
-  Serial.print("Session present: ");
-  Serial.println(sessionPresent);
+void onMqttConnect(bool sessionPresent)
+{
+  DEBUG_PRINT("MQTT Connected. Session present:" + String(sessionPresent));
 }
 
-void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
-  Serial.println("Disconnected from MQTT.");
+void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
+{
+  DEBUG_PRINT("MQTT Disconnected.");
+  // Serial.println("Disconnected from MQTT.");
 }
 
-void onMqttSubscribe(uint16_t packetId, uint8_t qos) {
-  Serial.println("Subscribe acknowledged.");
-  Serial.print("  packetId: ");
-  Serial.println(packetId);
-  Serial.print("  qos: ");
-  Serial.println(qos);
+void onMqttSubscribe(uint16_t packetId, uint8_t qos)
+{
+  DEBUG_PRINT("Subscribe acknowledged. PacketID:" + String(packetId));
 }
 
-void onMqttUnsubscribe(uint16_t packetId) {
-  Serial.println("Unsubscribe acknowledged.");
-  Serial.print("  packetId: ");
-  Serial.println(packetId);
+void onMqttUnsubscribe(uint16_t packetId)
+{
+  DEBUG_PRINT("Unsubscribe acknowledged. PacketID:" + String(packetId));
 }
 
-void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
-  Serial.println("Publish received.");
-  Serial.print("  topic: ");
-  Serial.println(topic);
-  Serial.print("  qos: ");
-  Serial.println(properties.qos);
-  Serial.print("  dup: ");
-  Serial.println(properties.dup);
-  Serial.print("  retain: ");
-  Serial.println(properties.retain);
-  Serial.print("  len: ");
-  Serial.println(len);
-  Serial.print("  index: ");
-  Serial.println(index);
-  Serial.print("  total: ");
-  Serial.println(total);
+void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
+{
+  DEBUG_PRINT("Published Received. ");
+  DEBUG_PRINT("Topic" + String(topic));
+  DEBUG_PRINT("Payload" + String(payload));
 }
 
-void onMqttPublish(uint16_t packetId) {
-  Serial.println("Publish acknowledged. PacketID:" +String(packetId));
+void onMqttPublish(uint16_t packetId)
+{
+  DEBUG_PRINT("Publish acknowledged. PacketID:" + String(packetId));
 }
 ///////////////////////// END MQTT ///////////////////////
 
@@ -644,39 +634,43 @@ void modeCheck()
 {
   DEBUG_PRINT("Checking Mode");
   // 0: Standby, 1: Continuous Monitoring, 2: Batery Saver
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   float minFloodDepth = 10; // Minimum flood depth is 10 cm;
   float curFloodDepth = getDepth();
-  unsigned long lastTipTime = 900e3; // Last rain gauge tip time should be greater/equal to 30 minutes
+  unsigned long lastTipTime = 1.8e6; // Last rain gauge tip time should be greater/equal to 30 minutes
+  unsigned long currentTime = millis();
   float curBattLevel = getBatteryLevel();
-  Serial.println("Last Detected Millis: " + String(lastDetectedTipMillis) + " " + String(lastDetectedTipMillis2));
-  Serial.println("Current Flood Depeth: " + String(curFloodDepth));
-  Serial.println("Current Battery Level: " + String(curBattLevel));
+  DEBUG_PRINT("Last Detected Millis: " + String(lastDetectedTipMillis) + " " + String(lastDetectedTipMillis2));
+  DEBUG_PRINT("Current Time: " + String(currentTime));
+  DEBUG_PRINT("Current Flood Depeth: " + String(curFloodDepth));
+  DEBUG_PRINT("Current Battery Level: " + String(curBattLevel));
+  // DEBUG_PRINT((currentTime - lastDetectedTipMillis) >= lastTipTime);
   // mode_Standby();
-  mode_ContinuousMonitoring();
+  // mode_ContinuousMonitoring();
   // mode_BatterySaver();
-  // if ((curFloodDepth < minFloodDepth) && (lastDetectedTipMillis >= lastTipTime) && (lastDetectedTipMillis2 >= lastTipTime))
-  // {
-  //   mode_Standby();
-  // }
-  // else if (((curFloodDepth >= minFloodDepth) || (lastDetectedTipMillis < lastTipTime) || (lastDetectedTipMillis2 < lastTipTime)) || (curBattLevel > 20.00))
-  // {
-  //   mode_ContinuousMonitoring();
-  // }
-  // else if (((curFloodDepth >= minFloodDepth) || (lastDetectedTipMillis < lastTipTime) || (lastDetectedTipMillis2 < lastTipTime)) || (curBattLevel <= 20.00))
-  // {
-  //   mode_BatterySaver();
-  // }
+  if (((curFloodDepth < minFloodDepth) && ((currentTime - lastDetectedTipMillis) >= lastTipTime) && ((currentTime - lastDetectedTipMillis2) >= lastTipTime)) || ((currentMode == 0) && (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)))
+  {
+    mode_Standby();
+  }
+  else if (((curFloodDepth >= minFloodDepth) || ((currentTime - lastDetectedTipMillis) < lastTipTime) || ((currentTime - lastDetectedTipMillis2) < lastTipTime)) && (curBattLevel > 20.00))
+  {
+    mode_ContinuousMonitoring();
+  }
+  else if (((curFloodDepth >= minFloodDepth) || ((currentTime - lastDetectedTipMillis) < lastTipTime) || ((currentTime - lastDetectedTipMillis2) < lastTipTime)) && (curBattLevel <= 20.00))
+  {
+    mode_BatterySaver();
+  }
 }
 
 void mode_Standby()
 {
   DEBUG_PRINT("Standby Mode.");
   currentMode = 0;
-  int minutesToSleep = 10;
+  int minutesToSleep = 30;
   publishDataScheduler.disable();
   checkMode.disable();
   publishData();
-  sleep(minutesToSleep * 30);
+  sleep(minutesToSleep * 60); // minutesToSleep (min) * (60 seconds/min)
 }
 
 void mode_ContinuousMonitoring()
@@ -685,13 +679,13 @@ void mode_ContinuousMonitoring()
   if (!publishDataScheduler.isEnabled() || currentMode != 1)
   {
     publishDataScheduler.disable();
-    publishDataScheduler.setInterval(5 * 60e3);
+    publishDataScheduler.setInterval(5 * 60e3); // Every 5 minutes
     publishDataScheduler.enable();
   }
   if (!checkMode.isEnabled() || currentMode != 1)
   {
     checkMode.disable();
-    checkMode.setInterval(30 * 60e3);
+    checkMode.setInterval(30 * 60e3); // Every 30 minutes
     checkMode.enable();
   }
   currentMode = 1;
@@ -722,8 +716,8 @@ void sleep(int time_to_sleep)
   esp_sleep_enable_timer_wakeup(time_to_sleep * uS_TO_S_FACTOR);
   DEBUG_PRINT("Sleeping for " + String(time_to_sleep) + " Seconds");
   rainflowMQTT.disconnect();
-  Serial.println("Disconnected from server.");
-  wait(100);
+  DEBUG_PRINT("Disconnected from server.");
+  wait(5000);
   Serial.flush();
   esp_deep_sleep_start();
 }
@@ -760,7 +754,6 @@ void wait(unsigned long interval)
   }
 }
 
-
 void publishData()
 {
   indicatorLED(true);
@@ -787,10 +780,11 @@ void publishData()
   {
     rainflowMQTT.connect();
     wait(5000);
-    if (rainflowMQTT.connected()) dataPublish();
-    rainflowMQTT.disconnect();   
+    if (rainflowMQTT.connected())
+      dataPublish();
+    rainflowMQTT.disconnect();
   }
-  
+
 #ifdef MODEM_WIFI
   disconnectWifi();
 #endif
@@ -829,12 +823,33 @@ void setup()
   wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1)
   {
-    //    int GPIO_reason = esp_sleep_get_ext1_wakeup_status();
-    int GPIO = log(esp_sleep_get_ext1_wakeup_status()) / log(2);
-    if (GPIO == rainGaugePin)
-      tippingBucket();
-    if (GPIO == rainGaugePin2)
-      tippingBucket2();
+    uint64_t GPIO_reason = esp_sleep_get_ext1_wakeup_status();
+    // int GPIO = log(GPIO_reason) / log(2);
+    // DEBUG_PRINT("GPIO Reason:" + String(GPIO_reason));
+    // DEBUG_PRINT("GPIO:" + String(GPIO));
+
+    if (GPIO_reason != 0)
+    {
+      int pin = __builtin_ffsll(GPIO_reason) - 1;
+      Serial.printf("Wake up from GPIO %d\n", pin);
+    }
+    else
+    {
+      Serial.printf("Wake up from GPIO\n");
+    }
+
+    // if (GPIO == rainGaugePin)
+    // {
+    //   tippingBucket();
+    //   tipTime = 0;
+    // }
+
+    // if (GPIO == rainGaugePin2)
+    // {
+    //   tippingBucket2();
+    //   tipTime2 = 0;
+    // }
+    tipTime = 0;
   }
 
   // -- Attach Sensors
@@ -847,6 +862,7 @@ void setup()
   {
     //    int GPIO_reason = esp_sleep_get_ext1_wakeup_status();
     rainfallAmountReset();
+    GPS_powerSaveMode();
   }
 
   //#ifdef MODEM_WIFI
@@ -880,5 +896,4 @@ void setup()
 void loop()
 {
   Runner.execute();
-  // rainflow.keepAlive();
 }
