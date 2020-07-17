@@ -170,12 +170,18 @@ void rainfallAmountReset()
   {
     DEBUG_PRINT("Resetting rain Gauge paramaters.");
     tipCount = 0;
+    tipTime = 0;
     lastDetectedTipMillis = 0;
     tipCount2 = 0;
+    tipTime2 = 0;
     lastDetectedTipMillis2 = 0;
     rainGaugeDate = gps.date.day();
   }
-  // if (lastDetectedTipMillis >= )
+  if ((millis() - lastDetectedTipMillis) >= 3.6e6)
+  {
+    lastDetectedTipMillis = 0;
+    tipTime = 0;
+  }
 }
 
 double rainfallRate()
