@@ -4,7 +4,7 @@
 #define BATTMINVOLT 3.6        // Minimum Battery Voltage
 #define BATTERYPIN 34          // Battery PIN
 #define BATTERYRATIO 0.78      // Battery voltage divider ratio
-#define LEDPin LED_BUILTIN     // LED Indicator Pin
+#define LEDPin 2     // LED Indicator Pin
 #define uS_TO_S_FACTOR 1000000 // Conversion factor for micro seconds to seconds */
 #define MODEM_WIFI             // Use Wifi for Data Telemetry
 //#define MODEM_GSM                     // Use GSM/GPRS for Data Telemetry
@@ -18,6 +18,7 @@
 #define US_RX 14         // Ultrasonic Module RX Pin
 #define US_TX 12         // Ultrasonic Module TX
 #define US_MAXHEIGHT 600 // Ultrasonic Max Height (cm)
+#define US_resetButton 4 // Reset Height Button
 //* -- GPS MODULE DEFINITIONS
 #define GPS_RX 25     // GSM/GPRS Module RX Pin
 #define GPS_TX 26     // GSM/GPRS Module TX Pin
@@ -31,6 +32,7 @@
 //* -- BAROMETER DEFINITIONS
 #define SEALEVELPRESSURE_HPA (1013.25) // Change to mean sea level pressure in your area
 
+#include <Arduino.h>
 #include <Adafruit_BME280.h>
 #include <AsyncMqttClient.h>
 #include <HardwareSerial.h>
@@ -42,6 +44,8 @@
 #include <Time.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <MedianFilterLib.h>
+#include <EEPROM.h>
 
 #ifdef MODEM_GSM
 #include <TinyGsmClient.h>
@@ -51,8 +55,8 @@
 #endif
 
 //* WiFi Access Point Details
-const char *ssid = "Hidden Network";
-const char *wifi_pass = "mmbmh15464";
+const char *ssid = "SKYbroadband9CE4";
+const char *wifi_pass = "286170965";
 
 //* GSM Internet Details
 const char *apn = "smartlte";
@@ -62,11 +66,21 @@ const char *gprsPass = "";
 //* Ultrasonic Sensor Variables
 RTC_DATA_ATTR float raftHeight = 0; // Set original Height
 float floodDepth = 0;               // Water level
+float timeMean = 0;
+long duration = 0;
+int distanceH = 0;
+int distanceD = 0;
+int medianHeight = 0;
+int medianDepth = 0;
+int buttonState = 0;
+const int datasizeUS = 30;     
+MedianFilter<int> medianFilter(3);
+
 
 //* RAFT Details
-const char *clientID = "bbb1691accc836be0958909cf8426e22b246";
-const char *username = "bbb1691accc836be0958909cf8426e22b246";
-const char *password = "aeff9fb2b53b2eba1b2ca8b218514615f995";
+const char *clientID = "29411b5610ebe12914592a9f8aae2f242e2b";
+const char *username = "29411b5610ebe12914592a9f8aae2f242e2b";
+const char *password = "e9b2bb429ee2d6192d4ee48b69e2443126c2";
 const char *streamID = "RGAPI";
 
 RTC_DATA_ATTR int bootCount = 0;
@@ -405,45 +419,73 @@ static void smartDelay(unsigned long ms)
 ///////////////////////// END GPS  ///////////////////////
 
 ///////////////////////// ULTRASONIC  ///////////////////////
-void getHeight()
-{
-  //  float sample = 0.00, raw = 0.00;
-  //  int sampleRate = 50;
-  //
-  //  for (int i = 0; i < sampleRate;) {
-  //    float sensorValue = sonar.ping_cm();
-  //    if (sensorValue != 0.00) {
-  //      waterDepthSensor.add(sensorValue);
-  //      sample = waterDepthSensor.get();
-  //      raw = raw + sample;
-  //      i++;
-  //    }
-  //    wait(5);
-  //  }
-  //  raftHeight = raw / sampleRate;
-  //  DEBUG_PRINT("RAFT Height: " + String(raftHeight));
-  //  waterDepthSensor.clear();
+void attachUS() {
+  pinMode(US_RX, OUTPUT);
+  pinMode(US_TX, INPUT); 
 }
+void getHeight() {
+    indicatorLED(true);
+    for (int i = 0; i < datasizeUS; i++){
+      digitalWrite(US_RX, LOW);
+      delayMicroseconds(20);
+      
+      digitalWrite(US_RX, HIGH);
+      delayMicroseconds(20);
+      digitalWrite(US_RX, LOW);
+      
+      duration = pulseIn(US_TX, HIGH);
+      
+      distanceH= duration*0.034/2;
+      raftHeight = distanceH; 
+  
+      unsigned long timeCount = micros();
+      medianHeight = medianFilter.AddValue(raftHeight);
+  Serial.println(medianHeight);
+      timeCount = micros() - timeCount;
+      timeMean += timeCount;
+      Serial.println(medianHeight);
+    wait(1000);
+    EEPROM.write(0, medianHeight);
+  }
+}
+  
+void resetHeight(){
+   buttonState = digitalRead(US_resetButton);
+  if (buttonState == HIGH) {
+    getHeight();
+  } else {
+    // turn LED off:
+    indicatorLED(false);
+  }
+}
+float getDepth() {
+  for (int i = 0; i < datasizeUS; i++){
+    digitalWrite(US_RX, LOW);
+    delayMicroseconds(20);
+    
+    digitalWrite(US_RX, HIGH);
+    delayMicroseconds(20);
+    digitalWrite(US_RX, LOW);
+    
+    duration = pulseIn(US_TX, HIGH);
+    
+    distanceD = duration*0.034/2;
+//Serial.println(distanceD);
+    floodDepth = distanceD; 
+//Serial.println(floodDepth);
+    unsigned long timeCount = micros();
+    medianDepth = medianFilter.AddValue(floodDepth);
+    timeCount = micros() - timeCount;
+    timeMean += timeCount;
 
-float getDepth()
-{
-  //  float sensorValue, raw = 0.00, sample = 0.00, avg = 0.00;
-  //  int sampleRate = 50;
-  //  for (int i = 0; i < sampleRate;) {
-  //    sensorValue = sonar.ping_cm();
-  //    if (sensorValue != 0.00) {
-  //      waterDepthSensor.add(sensorValue);
-  //      sample = waterDepthSensor.get();
-  //      raw = raw + sample;
-  //      i++;
-  //    }
-  //  }
-  //  avg = raw / sampleRate;
-  //  float floodDepth = raftHeight - avg;
-  //  DEBUG_PRINT("Flood Depth: " + String(floodDepth));
-  //  waterDepthSensor.clear();
-  floodDepth = 0;
-  return floodDepth;
+//Serial.println(medianDepth);
+
+    medianDepth = medianHeight-medianDepth;
+Serial.println(medianDepth);
+    floodDepth = medianDepth;
+    return floodDepth;
+  wait(1000);
+  }
 }
 
 ///////////////////////// END ULTRASONIC  ///////////////////////
@@ -543,7 +585,6 @@ void dataPublish()
   DEBUG_PRINT("Retrieving data.");
   String unixTime = getUnixTime();
   DEBUG_PRINT("Current time: " + String(unixTime));
-
   JsonObject payload_Data = payloadData.createNestedObject("data");
   JsonObject objectLatitude = payload_Data.createNestedObject("LAT1");
   objectLatitude["time"] = unixTime;
@@ -559,7 +600,7 @@ void dataPublish()
 
   JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
   objectFloodDepth["time"] = unixTime;
-  objectFloodDepth["value"] = 0;
+  objectFloodDepth["value"] = getDepth();
 
   JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
   objectRainRate["time"] = unixTime;
@@ -648,7 +689,7 @@ void modeCheck()
   float curBattLevel = getBatteryLevel();
   DEBUG_PRINT("Last Detected Millis: " + String(lastDetectedTipMillis) + " " + String(lastDetectedTipMillis2));
   DEBUG_PRINT("Current Time: " + String(currentTime));
-  DEBUG_PRINT("Current Flood Depeth: " + String(curFloodDepth));
+  DEBUG_PRINT("Current Flood Depth: " + String(curFloodDepth));
   DEBUG_PRINT("Current Battery Level: " + String(curBattLevel));
   // DEBUG_PRINT((currentTime - lastDetectedTipMillis) >= lastTipTime);
   // mode_Standby();
@@ -863,12 +904,15 @@ void setup()
   attachGPS();
   attachRainGauge();
   attachBarometer();
+  attachUS();
+  getHeight();
 
   if ((wakeup_reason != ESP_SLEEP_WAKEUP_EXT1) && (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER))
   {
     //    int GPIO_reason = esp_sleep_get_ext1_wakeup_status();
     rainfallAmountReset();
     GPS_powerSaveMode();
+    getHeight();
   }
 
   //#ifdef MODEM_WIFI
@@ -902,4 +946,5 @@ void setup()
 void loop()
 {
   Runner.execute();
+  resetHeight();
 }
