@@ -4,7 +4,7 @@
 #define BATTMINVOLT 3.6        // Minimum Battery Voltage
 #define BATTERYPIN 34          // Battery PIN
 #define BATTERYRATIO 0.78      // Battery voltage divider ratio
-#define LEDPin 2     // LED Indicator Pin
+#define LEDPin 2               // LED Indicator Pin
 #define uS_TO_S_FACTOR 1000000 // Conversion factor for micro seconds to seconds */
 #define MODEM_WIFI             // Use Wifi for Data Telemetry
 //#define MODEM_GSM                     // Use GSM/GPRS for Data Telemetry
@@ -15,10 +15,10 @@
 #define GSM_TX 16             // GSM/GPRS Module TX Pin
 #define GSM_BAUD 9600         // GSM/GPRS Module Baud Rate
 //* -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
-#define US_RX 14         // Ultrasonic Module RX Pin
-#define US_TX 12         // Ultrasonic Module TX
-#define US_MAXHEIGHT 600 // Ultrasonic Max Height (cm)
-#define US_resetButton 4 // Reset Height Button
+#define US_RX 14          // Ultrasonic Module RX Pin
+#define US_TX 12          // Ultrasonic Module TX
+#define US_MAXHEIGHT 600  // Ultrasonic Max Height (cm)
+#define US_resetButton 13 // Reset Height Button
 //* -- GPS MODULE DEFINITIONS
 #define GPS_RX 25     // GSM/GPRS Module RX Pin
 #define GPS_TX 26     // GSM/GPRS Module TX Pin
@@ -26,7 +26,7 @@
 //* -- RAIN GAUGE DEFINITIONS
 #define rainGaugePin 35              // Rain Guage 1 Pin
 #define rainGaugePin2 32             // Rain Gauge 2
-#define GPIO_PIN_BITMASK 0x800000000 // (2^35 + 2^32)Hex
+#define GPIO_PIN_BITMASK 0x900004000 // (2^35 + 2^32)Hex
 #define tipAmount 0.3636             // 0.3636 mm of rainfall per tip
 #define tipAmount2 0.2555            // S
 //* -- BAROMETER DEFINITIONS
@@ -45,7 +45,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <MedianFilterLib.h>
-#include <EEPROM.h>
+#include "EEPROM.h"
 
 #ifdef MODEM_GSM
 #include <TinyGsmClient.h>
@@ -55,8 +55,8 @@
 #endif
 
 //* WiFi Access Point Details
-const char *ssid = "SKYbroadband9CE4";
-const char *wifi_pass = "286170965";
+const char *ssid = "Hidden Network";
+const char *wifi_pass = "mmbmh15464";
 
 //* GSM Internet Details
 const char *apn = "smartlte";
@@ -68,19 +68,21 @@ RTC_DATA_ATTR float raftHeight = 0; // Set original Height
 float floodDepth = 0;               // Water level
 float timeMean = 0;
 long duration = 0;
-int distanceH = 0;
-int distanceD = 0;
-int medianHeight = 0;
-int medianDepth = 0;
-int buttonState = 0;
-const int datasizeUS = 30;     
+float distanceH = 0;
+float distanceD = 0;
+float medianGetHeight = 0;
+float medianHeight = 0;
+float medianDepth = 0;
+long lastDetectedTipMillisUS = 0;
+bool heightWrite = false;
+// int buttonState = 0;
+const int datasizeUS = 30;
 MedianFilter<int> medianFilter(3);
 
-
 //* RAFT Details
-const char *clientID = "29411b5610ebe12914592a9f8aae2f242e2b";
-const char *username = "29411b5610ebe12914592a9f8aae2f242e2b";
-const char *password = "e9b2bb429ee2d6192d4ee48b69e2443126c2";
+const char *clientID = "bbb1691accc836be0958909cf8426e22b246";
+const char *username = "bbb1691accc836be0958909cf8426e22b246";
+const char *password = "aeff9fb2b53b2eba1b2ca8b218514615f995";
 const char *streamID = "RGAPI";
 
 RTC_DATA_ATTR int bootCount = 0;
@@ -109,7 +111,8 @@ HardwareSerial SerialGPS(1);
 Task publishDataScheduler(19 * 60e3, TASK_FOREVER, &publishData);  // Every 10 minutes -10min*60seconds*1000
 Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);                // Every 5 minutes
 Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset); // Every 5 minutes
-
+// Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset); // Every 5 minutes
+Task setHeightTask(10, TASK_ONCE, &setHeight);
 WiFiUDP ntpUDP;
 Scheduler Runner;
 
@@ -172,7 +175,7 @@ void attachRainGauge()
   attachInterrupt(digitalPinToInterrupt(rainGaugePin), tippingBucket, FALLING);
   //esp_sleep_enable_ext0_wakeup(GPIO_NUM_X1, 0);
 
-  DEBUG_PRINT("Rain Gauge attached to pin: " + String(rainGaugePin2));
+  DEBUG_PRINT("Rain Gauge 2 attached to pin: " + String(rainGaugePin2));
   pinMode(rainGaugePin2, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(rainGaugePin2), tippingBucket2, FALLING);
 }
@@ -180,16 +183,19 @@ void attachRainGauge()
 void rainfallAmountReset()
 {
   smartDelay(5000);
-  if (rainGaugeDate != gps.date.day())
+  if (gps.date.isValid())
   {
-    DEBUG_PRINT("Resetting rain Gauge paramaters.");
-    tipCount = 0;
-    tipTime = 0;
-    lastDetectedTipMillis = 0;
-    tipCount2 = 0;
-    tipTime2 = 0;
-    lastDetectedTipMillis2 = 0;
-    rainGaugeDate = gps.date.day();
+    if (rainGaugeDate != gps.date.day())
+    {
+      DEBUG_PRINT("Resetting Rain Gauge paramaters.");
+      tipCount = 0;
+      tipTime = 0;
+      lastDetectedTipMillis = 0;
+      tipCount2 = 0;
+      tipTime2 = 0;
+      lastDetectedTipMillis2 = 0;
+      rainGaugeDate = gps.date.day();
+    }
   }
   if ((millis() - lastDetectedTipMillis) >= 3.6e6)
   {
@@ -204,34 +210,28 @@ double rainfallRate()
     return 0;
   else
   {
-    // DEBUG_PRINT(String(tipAmount * 3.6e6 / tipTime));
-    Serial.println("TipTime: " + String(tipTime));
     return (double)((double)tipAmount * (double)3.6e6 / (double)(tipTime / 1.00));
   }
-  //return tipAmount / 3600000;
 }
 
 double rainfallAmount()
 {
-  // DEBUG_PRINT(String((float)(tipCount * tipAmount)));
   return (double)((double)tipCount * tipAmount);
 }
 
 float rainfallRate2()
 {
-  if (tipCount2 == 0)
+  if (tipCount2 == 0 || tipTime2 == 0)
     return 0;
   else
   {
-    // DEBUG_PRINT(String(tipAmount2 * 3.6e6 / tipTime2));
-    return tipAmount2 * 3.6e6 / tipTime2;
+    return (double)((double)tipAmount2 * (double)3.6e6 / (double)(tipTime2 / 1.00));
   }
 }
 
 float rainfallAmount2()
 {
-  // DEBUG_PRINT(String(tipCount2 * tipAmount2));
-  return tipCount2 * tipAmount2;
+  return (double)((double)tipCount2 * tipAmount2);
 }
 /////////////////////////  END RAIN GAUGE  ///////////////////////
 
@@ -419,73 +419,128 @@ static void smartDelay(unsigned long ms)
 ///////////////////////// END GPS  ///////////////////////
 
 ///////////////////////// ULTRASONIC  ///////////////////////
-void attachUS() {
+void attachUS()
+{
+  DEBUG_PRINT("Attaching Ultrasonic Sensor. TX:" + String(US_TX) + " RX:" + String(US_RX) + " USReset:" + String(US_resetButton));
   pinMode(US_RX, OUTPUT);
-  pinMode(US_TX, INPUT); 
+  pinMode(US_TX, INPUT);
+  attachInterrupt(digitalPinToInterrupt(US_resetButton), usISR, FALLING);
 }
-void getHeight() {
-    indicatorLED(true);
-    for (int i = 0; i < datasizeUS; i++){
-      digitalWrite(US_RX, LOW);
-      delayMicroseconds(20);
-      
-      digitalWrite(US_RX, HIGH);
-      delayMicroseconds(20);
-      digitalWrite(US_RX, LOW);
-      
-      duration = pulseIn(US_TX, HIGH);
-      
-      distanceH= duration*0.034/2;
-      raftHeight = distanceH; 
-  
-      unsigned long timeCount = micros();
-      medianHeight = medianFilter.AddValue(raftHeight);
-  Serial.println(medianHeight);
-      timeCount = micros() - timeCount;
-      timeMean += timeCount;
-      Serial.println(medianHeight);
-    wait(1000);
-    EEPROM.write(0, medianHeight);
-  }
-}
-  
-void resetHeight(){
-   buttonState = digitalRead(US_resetButton);
-  if (buttonState == HIGH) {
-    getHeight();
-  } else {
-    // turn LED off:
-    indicatorLED(false);
-  }
-}
-float getDepth() {
-  for (int i = 0; i < datasizeUS; i++){
+
+void getHeight()
+{
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+
+  for (int i = 0; i < datasizeUS; i++)
+  {
+    // DEBUG_PRINT(i);
+    float temp = getTemperature();
+    float hum = getHumidity();
+    float speedOfSound = 331.4 + (0.606 * temp) + (0.0124 * hum);
+    float soundCM = speedOfSound / 10000;
+    // DEBUG_PRINT("Temperature:" + String(temp));
+    // DEBUG_PRINT("Humidity:" + String(hum));
+    // DEBUG_PRINT("Speed of Sound in CM: " + String(soundCM));
     digitalWrite(US_RX, LOW);
-    delayMicroseconds(20);
-    
+    delayMicroseconds(2);
+
     digitalWrite(US_RX, HIGH);
     delayMicroseconds(20);
     digitalWrite(US_RX, LOW);
-    
+
     duration = pulseIn(US_TX, HIGH);
-    
-    distanceD = duration*0.034/2;
-//Serial.println(distanceD);
-    floodDepth = distanceD; 
-//Serial.println(floodDepth);
+
+    distanceH = (duration / 2) * ((331.4 + (0.606 * temp) + (0.0124 * hum)) / 10000);
+    // distanceH = duration * 0.034 / 2;
+    raftHeight = distanceH;
+
+    unsigned long timeCount = micros();
+    medianGetHeight = medianFilter.AddValue(raftHeight);
+    // Serial.println(medianHeight);
+    timeCount = micros() - timeCount;
+    timeMean += timeCount;
+
+    // DEBUG_PRINT(raftHeight);
+    wait(1000);
+  }
+  // DEBUG_PRINT("Current Height: " + String(medianGetHeight));
+  indicatorLED(false);
+}
+
+void usISR()
+{
+  if (millis() - lastDetectedTipMillisUS > 10000)
+  {
+    DEBUG_PRINT("Height write enabled.");
+    lastDetectedTipMillisUS = millis();
+    heightWrite = true;
+  }
+}
+
+void setHeight()
+{
+  DEBUG_PRINT("Saving height to memory.");
+  EEPROM.writeFloat(0, medianGetHeight);
+  EEPROM.commit();
+  delay(50);
+  setHeightTask.disable();
+  DEBUG_PRINT("Succesfully saved height of " + String(medianGetHeight) + " in memory.");
+}
+
+float getDepth()
+{
+  // medianHeight = EEPROM.read(0);
+  medianHeight = EEPROM.readFloat(0);
+  DEBUG_PRINT("Median Height: " + String(medianHeight));
+  for (int i = 0; i < datasizeUS; i++)
+  {
+    float temp = getTemperature();
+    float hum = getHumidity();
+    float speedOfSound = 331.4 + (0.606 * temp) + (0.0124 * hum);
+    float soundCM = speedOfSound / 10000;
+
+    digitalWrite(US_RX, LOW);
+    delayMicroseconds(2);
+
+    digitalWrite(US_RX, HIGH);
+    delayMicroseconds(20);
+    digitalWrite(US_RX, LOW);
+
+    duration = pulseIn(US_TX, HIGH, 26000);
+    distanceD = (duration / 2) * soundCM;
+
+    // distanceD = duration * 0.034 / 2;
+    //Serial.println(distanceD);
+    floodDepth = distanceD;
+    //Serial.println(floodDepth);
     unsigned long timeCount = micros();
     medianDepth = medianFilter.AddValue(floodDepth);
     timeCount = micros() - timeCount;
     timeMean += timeCount;
 
-//Serial.println(medianDepth);
+    //Serial.println(medianDepth);
 
-    medianDepth = medianHeight-medianDepth;
-Serial.println(medianDepth);
-    floodDepth = medianDepth;
-    return floodDepth;
-  wait(1000);
+    medianDepth = medianHeight - medianDepth;
+    wait(1000);
   }
+  floodDepth = medianDepth;
+  DEBUG_PRINT("Flood Depth: " + String(medianDepth));
+  if (floodDepth < 0)
+    return 0;
+  else
+    return floodDepth;
 }
 
 ///////////////////////// END ULTRASONIC  ///////////////////////
@@ -537,10 +592,10 @@ double ReadVoltage(byte pin)
 
 void attachBarometer()
 {
-  DEBUG_PRINT("Attaching Barometer");
+  DEBUG_PRINT("Attaching Barometer.");
   if (!bme.begin(0x76))
   {
-    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    DEBUG_PRINT("Could not find a valid BME280 sensor, check wiring!");
     return;
   }
   bme.setSampling(Adafruit_BME280::MODE_FORCED,
@@ -598,10 +653,6 @@ void dataPublish()
   objectAltitude["time"] = unixTime;
   objectAltitude["value"] = getAltitude();
 
-  JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
-  objectFloodDepth["time"] = unixTime;
-  objectFloodDepth["value"] = getDepth();
-
   JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
   objectRainRate["time"] = unixTime;
   objectRainRate["value"] = rainfallRate();
@@ -633,6 +684,10 @@ void dataPublish()
   JsonObject objectBatt = payload_Data.createNestedObject("BV1");
   objectBatt["time"] = unixTime;
   objectBatt["value"] = getBatteryVoltage();
+
+  JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
+  objectFloodDepth["time"] = unixTime;
+  objectFloodDepth["value"] = getDepth();
 
   serializeJson(payloadData, payloadBuffer);
   topic = "RAFT_Data";
@@ -679,7 +734,7 @@ void onMqttPublish(uint16_t packetId)
 
 void modeCheck()
 {
-  DEBUG_PRINT("Checking Mode");
+  DEBUG_PRINT("Checking Mode.");
   // 0: Standby, 1: Continuous Monitoring, 2: Batery Saver
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   float minFloodDepth = 10; // Minimum flood depth is 10 cm;
@@ -863,7 +918,7 @@ void setup()
 #endif
   DEBUG_PRINT("System initialising");
   setCpuFrequencyMhz(80); // CPU Frequency set to 80MHz to reduce power consumption
-
+  bootCount++;
   print_wakeup_reason();
   esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause();
   esp_sleep_wakeup_cause_t wakeup_reason;
@@ -899,20 +954,30 @@ void setup()
     tipTime = 0;
   }
 
+  if (!EEPROM.begin(64))
+  {
+    DEBUG_PRINT("Failed to initialise EEPROM");
+    DEBUG_PRINT("Restarting...");
+    wait(1000);
+    ESP.restart();
+  }
   // -- Attach Sensors
   pinMode(BATTERYPIN, INPUT); // Have to check if still necessary
   attachGPS();
   attachRainGauge();
   attachBarometer();
   attachUS();
-  getHeight();
-
+  if (bootCount == 1)
+  {
+    getHeight();
+    if (heightWrite == true)
+      setHeight();
+  }
   if ((wakeup_reason != ESP_SLEEP_WAKEUP_EXT1) && (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER))
   {
     //    int GPIO_reason = esp_sleep_get_ext1_wakeup_status();
     rainfallAmountReset();
     GPS_powerSaveMode();
-    getHeight();
   }
 
   //#ifdef MODEM_WIFI
@@ -939,6 +1004,7 @@ void setup()
   Runner.addTask(publishDataScheduler);
   Runner.addTask(checkMode);
   Runner.addTask(rainfallReset);
+  Runner.addTask(setHeightTask);
   rainfallReset.enable();
   modeCheck();
 }
@@ -946,5 +1012,4 @@ void setup()
 void loop()
 {
   Runner.execute();
-  resetHeight();
 }
