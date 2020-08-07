@@ -1,0 +1,9 @@
+SOONEST:
+SOON:
+    debug levels
+MEDIUM-TERM:
+    change blox to mb 
+    unfactor _rl
+    async statics to PANGO
+DREAMLAND:
+    LittleFS FULL QoS2 recovery (needs root n branch change to "Method b")
