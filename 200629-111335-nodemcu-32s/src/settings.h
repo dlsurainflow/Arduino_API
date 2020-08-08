@@ -4,7 +4,8 @@
 #define BATTMINVOLT 3.6        // Minimum Battery Voltage
 #define BATTERYPIN 34          // Battery PIN
 #define BATTERYRATIO 0.78      // Battery voltage divider ratio
-#define LEDPin 2               // LED Indicator Pin
+#define LEDPin 18              // LED Indicator Pin
+#define LEDPin1 19             // LED Indicator Pin
 #define uS_TO_S_FACTOR 1000000 // Conversion factor for micro seconds to seconds */
 #define MODEM_WIFI             // Use Wifi for Data Telemetry
 // #define MODEM_GSM  // Use GSM/GPRS for Data Telemetry
@@ -57,4 +58,5 @@ const char *gprsPass = "";
 const char *clientID = "bbb1691accc836be0958909cf8426e22b246";
 const char *username = "bbb1691accc836be0958909cf8426e22b246";
 const char *password = "aeff9fb2b53b2eba1b2ca8b218514615f995";
-const char *streamID = "RGAPI";
+const char *streamIDData = "RGAPI";
+const char *streamIDInfo = "RAFT_Info";

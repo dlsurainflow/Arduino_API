@@ -1,7 +1,41 @@
-#include "settings.h"
+//  -- RAFT DEFINTIONS
+#define MICRO_BAUD_RATE 115200 // Microcontroller Serial Port Baud Rate
+#define BATTMAXVOLT 4.2        // Maximum Battery Voltage
+#define BATTMINVOLT 3.6        // Minimum Battery Voltage
+#define BATTERYPIN 34          // Battery PIN
+#define BATTERYRATIO 0.78      // Battery voltage divider ratio
+#define LEDPin 2               // LED Indicator Pin
+#define uS_TO_S_FACTOR 1000000 // Conversion factor for micro seconds to seconds */
+#define MODEM_WIFI             // Use Wifi for Data Telemetry
+//#define MODEM_GSM                     // Use GSM/GPRS for Data Telemetry
+#define DEBUG_MODE // DEBUG MODE ON
+//* -- GSM DEFINITIONS
+#define TINY_GSM_MODEM_SIM800 // GSM/GPRS Module Model
+#define GSM_RX 17             // GSM/GPRS Module RX Pin
+#define GSM_TX 16             // GSM/GPRS Module TX Pin
+#define GSM_BAUD 9600         // GSM/GPRS Module Baud Rate
+//* -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
+#define US_RX 14          // Ultrasonic Module RX Pin
+#define US_TX 12          // Ultrasonic Module TX
+#define US_MAXHEIGHT 600  // Ultrasonic Max Height (cm)
+#define US_resetButton 13 // Reset Height Button
+//* -- GPS MODULE DEFINITIONS
+#define GPS_RX 25     // GSM/GPRS Module RX Pin
+#define GPS_TX 26     // GSM/GPRS Module TX Pin
+#define GPS_BAUD 9600 // GSM/GPRS Module TX Pin
+//* -- RAIN GAUGE DEFINITIONS
+#define rainGaugePin 35              // Rain Guage 1 Pin
+#define rainGaugePin2 32             // Rain Gauge 2
+#define GPIO_PIN_BITMASK 0x900004000 // (2^35 + 2^32)Hex
+#define tipAmount 0.3636             // 0.3636 mm of rainfall per tip
+#define tipAmount2 0.2555            // S
+//* -- BAROMETER DEFINITIONS
+#define SEALEVELPRESSURE_HPA (1013.25) // Change to mean sea level pressure in your area
+
 #include <Arduino.h>
 #include <Adafruit_BME280.h>
-#include <AsyncMqttClient.h>
+// #include <AsyncMqttClient.h>
+#include <PangolinMQTT.h>
 #include <HardwareSerial.h>
 #include <TaskScheduler.h>
 #include <ArduinoJson.h>
@@ -13,28 +47,44 @@
 #include <SPI.h>
 #include <MedianFilterLib.h>
 #include "EEPROM.h"
-#include <Update.h>
+
+#ifdef MODEM_GSM
+#include <TinyGsmClient.h>
+#endif
+#ifdef MODEM_WIFI
 #include <WiFi.h>
+#endif
 
-#define FIRMWARE_VER 1.0
+//* WiFi Access Point Details
+const char *ssid = "Hidden Network";
+const char *wifi_pass = "mmbmh15464";
 
-// #define MODEM_GSM // Use GSM/GPRS for Data Telemetry
+//* GSM Internet Details
+const char *apn = "smartlte";
+const char *gprsUser = "";
+const char *gprsPass = "";
 
 //* Ultrasonic Sensor Variables
 RTC_DATA_ATTR float raftHeight = 0; // Set original Height
-// float floodDepth = 0;               // Water level
-// float timeMean = 0;
-// long duration = 0;
-// float distanceH = 0;
-// float distanceD = 0;
+float floodDepth = 0;               // Water level
+float timeMean = 0;
+long duration = 0;
+float distanceH = 0;
+float distanceD = 0;
 float medianGetHeight = 0;
 float medianHeight = 0;
 float medianDepth = 0;
 long lastDetectedTipMillisUS = 0;
 bool heightWrite = false;
 // int buttonState = 0;
-const int datasizeUS = 30;
+const int datasizeUS = 10;
 MedianFilter<int> medianFilter(3);
+
+//* RAFT Details
+const char *clientID = "bbb1691accc836be0958909cf8426e22b246";
+const char *username = "bbb1691accc836be0958909cf8426e22b246";
+const char *password = "aeff9fb2b53b2eba1b2ca8b218514615f995";
+const char *streamID = "RGAPI";
 
 RTC_DATA_ATTR int bootCount = 0;
 //int incomingByte = 0;
@@ -48,24 +98,22 @@ RTC_DATA_ATTR int currentMode = 0;
 #define DEBUG_PRINT(x)
 #endif
 
-WiFiClient client;
-AsyncMqttClient rainflowMQTT; // Instance Creation of MQTT Client
-Adafruit_BME280 bme;          // I2C
+// AsyncMqttClient rainflowMQTT; // Instance Creation of MQTT Client
+PangolinMQTT rainflowMQTT;
+Adafruit_BME280 bme; // I2C
 
-void publishData();
 void modeCheck();
+void setHeight();
+void publishData();
 void rainfallAmountReset();
 
 TinyGPSPlus gps;
 HardwareSerial SerialGPS(1);
-// HardwareSerial SerialGSM(2);
-// TinyGsm modem(SerialGSM);
-// TinyGsmClient client(modem);
+//NewPing sonar(US_RX, US_TX, US_MAXHEIGHT);
 
 Task publishDataScheduler(19 * 60e3, TASK_FOREVER, &publishData);  // Every 10 minutes -10min*60seconds*1000
 Task checkMode(5 * 60e3, TASK_FOREVER, &modeCheck);                // Every 5 minutes
 Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset); // Every 5 minutes
-// Task rainfallReset(10 * 60e3, TASK_FOREVER, &rainfallAmountReset); // Every 5 minutes
 Task setHeightTask(10, TASK_ONCE, &setHeight);
 WiFiUDP ntpUDP;
 Scheduler Runner;
@@ -141,7 +189,7 @@ void rainfallAmountReset()
   {
     if (rainGaugeDate != gps.date.day())
     {
-      DEBUG_PRINT("Resetting rain gauge paramaters.");
+      DEBUG_PRINT("Resetting Rain Gauge paramaters.");
       tipCount = 0;
       tipTime = 0;
       lastDetectedTipMillis = 0;
@@ -149,6 +197,7 @@ void rainfallAmountReset()
       tipTime2 = 0;
       lastDetectedTipMillis2 = 0;
       rainGaugeDate = gps.date.day();
+      DEBUG_PRINT("Rain gauge date now: " + String(rainGaugeDate));
     }
   }
   if ((millis() - lastDetectedTipMillis) >= 3.6e6)
@@ -383,7 +432,6 @@ void attachUS()
 
 void getHeight()
 {
-  float duration = 0;
   indicatorLED(true);
   wait(100);
   indicatorLED(false);
@@ -403,8 +451,8 @@ void getHeight()
     // DEBUG_PRINT(i);
     float temp = getTemperature();
     float hum = getHumidity();
-    // float speedOfSound = 331.4 + (0.606 * temp) + (0.0124 * hum);
-    // float soundCM = speedOfSound / 10000;
+    float speedOfSound = 331.4 + (0.606 * temp) + (0.0124 * hum);
+    float soundCM = speedOfSound / 10000;
     // DEBUG_PRINT("Temperature:" + String(temp));
     // DEBUG_PRINT("Humidity:" + String(hum));
     // DEBUG_PRINT("Speed of Sound in CM: " + String(soundCM));
@@ -417,19 +465,17 @@ void getHeight()
 
     duration = pulseIn(US_TX, HIGH);
 
-    // distanceH = (duration / 2) * ((331.4 + (0.606 * temp) + (0.0124 * hum)) / 10000);
+    distanceH = (duration / 2) * ((331.4 + (0.606 * temp) + (0.0124 * hum)) / 10000);
     // distanceH = duration * 0.034 / 2;
-    // raftHeight = distanceH;
-    raftHeight = (duration / 2) * ((331.4 + (0.606 * temp) + (0.0124 * hum)) / 10000);
+    raftHeight = distanceH;
 
-    // unsigned long timeCount = micros();
+    unsigned long timeCount = micros();
     medianGetHeight = medianFilter.AddValue(raftHeight);
     // Serial.println(medianHeight);
-    // timeCount = micros() - timeCount;
-    // timeMean += timeCount;
+    timeCount = micros() - timeCount;
+    timeMean += timeCount;
 
-    // DEBUG_PRINT(raftHeight);
-    DEBUG_PRINT("getDepth: " + String(i) + " - " + String(medianGetHeight));
+    DEBUG_PRINT("getHeight: " + String(i) + " - " + String(raftHeight));
     wait(1000);
   }
   // DEBUG_PRINT("Current Height: " + String(medianGetHeight));
@@ -458,17 +504,15 @@ void setHeight()
 
 float getDepth()
 {
-  float duration = 0, floodDepth = 0;
   // medianHeight = EEPROM.read(0);
   medianHeight = EEPROM.readFloat(0);
   DEBUG_PRINT("Median Height: " + String(medianHeight));
-  int i = 0, counter = 0;
-  for (; i < datasizeUS;)
+  for (int i = 0; i < datasizeUS; i++)
   {
     float temp = getTemperature();
     float hum = getHumidity();
-    // float speedOfSound = 331.4 + (0.606 * temp) + (0.0124 * hum);
-    // float soundCM = speedOfSound / 10000;
+    float speedOfSound = 331.4 + (0.606 * temp) + (0.0124 * hum);
+    float soundCM = speedOfSound / 10000;
 
     digitalWrite(US_RX, LOW);
     delayMicroseconds(2);
@@ -478,36 +522,24 @@ float getDepth()
     digitalWrite(US_RX, LOW);
 
     duration = pulseIn(US_TX, HIGH, 26000);
-    // distanceD = (duration / 2) * ((331.4 + (0.606 * temp) + (0.0124 * hum))/10000);
+    distanceD = (duration / 2) * soundCM;
 
     // distanceD = duration * 0.034 / 2;
     //Serial.println(distanceD);
-    // floodDepth = distanceD;
-    floodDepth = (duration / 2) * ((331.4 + (0.606 * temp) + (0.0124 * hum)) / 10000);
+    floodDepth = distanceD;
     //Serial.println(floodDepth);
-    // unsigned long timeCount = micros();
-    if (abs(floodDepth) <= US_MAXHEIGHT)
-    {
-      medianDepth = medianFilter.AddValue(floodDepth);
-      i++;
-    }
-
-    // timeCount = micros() - timeCount;
-    // timeMean += timeCount;
+    unsigned long timeCount = micros();
+    medianDepth = medianFilter.AddValue(floodDepth);
+    timeCount = micros() - timeCount;
+    timeMean += timeCount;
 
     //Serial.println(medianDepth);
 
     medianDepth = medianHeight - medianDepth;
     DEBUG_PRINT("getDepth: " + String(i) + " - " + String(medianDepth));
-    counter++;
-
-    if (counter >= (datasizeUS + 10)) // Max attempts of datasizeUS + 10 counts
-      break;
-
     wait(1000);
   }
   floodDepth = medianDepth;
-
   DEBUG_PRINT("Flood Depth: " + String(medianDepth));
   if (floodDepth < 0)
     return 0;
@@ -599,224 +631,84 @@ float getHumidity()
 
 ///////////////////////// END BAROMETRIC SENSOR ///////////////////////
 ///////////////////////// MQTT ///////////////////////
-//* FOTA Functions
-String getHeaderValue(String header, String headerName)
+void dataPublish()
 {
-  return header.substring(strlen(headerName.c_str()));
-}
+  DynamicJsonDocument payloadData(1024);
+  String payloadBuffer;
+  String topic;
+  int len;
 
-String getBinName(String url)
-{
-  int index = 0;
+  payloadData["data_type"] = "event";
+  payloadData["stream_id"] = streamID;
 
-  // Search for last /
-  for (int i = 0; i < url.length(); i++)
-  {
-    if (url[i] == '/')
-    {
-      index = i;
-    }
-  }
+  DEBUG_PRINT("Retrieving data.");
+  String unixTime = getUnixTime();
+  DEBUG_PRINT("Current time: " + String(unixTime));
+  JsonObject payload_Data = payloadData.createNestedObject("data");
+  JsonObject objectLatitude = payload_Data.createNestedObject("LAT1");
+  objectLatitude["time"] = unixTime;
+  objectLatitude["value"] = gps.location.lat();
 
-  String binName = "";
+  JsonObject objectLongitude = payload_Data.createNestedObject("LNG1");
+  objectLongitude["time"] = unixTime;
+  objectLongitude["value"] = gps.location.lng();
 
-  // Create binName
-  for (int i = index; i < url.length(); i++)
-  {
-    binName += url[i];
-  }
+  JsonObject objectAltitude = payload_Data.createNestedObject("ALT1");
+  objectAltitude["time"] = unixTime;
+  objectAltitude["value"] = getAltitude();
 
-  return binName;
-}
+  JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
+  objectRainRate["time"] = unixTime;
+  objectRainRate["value"] = rainfallRate();
 
-String getHostName(String url)
-{
-  int index = 0;
+  JsonObject objectRainAmount = payload_Data.createNestedObject("RA1");
+  objectRainAmount["time"] = unixTime;
+  objectRainAmount["value"] = rainfallAmount();
 
-  // Search for last /
-  for (int i = 0; i < url.length(); i++)
-  {
-    if (url[i] == '/')
-    {
-      index = i;
-    }
-  }
+  JsonObject objectRainRate2 = payload_Data.createNestedObject("RR2");
+  objectRainRate2["time"] = unixTime;
+  objectRainRate2["value"] = rainfallRate2();
 
-  String hostName = "";
+  JsonObject objectRainAmount2 = payload_Data.createNestedObject("RA2");
+  objectRainAmount2["time"] = unixTime;
+  objectRainAmount2["value"] = rainfallAmount2();
 
-  // Create binName
-  for (int i = 0; i < index; i++)
-  {
-    hostName += url[i];
-  }
+  JsonObject objectTemp = payload_Data.createNestedObject("TMP1");
+  objectTemp["time"] = unixTime;
+  objectTemp["value"] = getTemperature();
 
-  return hostName;
-}
+  JsonObject objectPress = payload_Data.createNestedObject("PR1");
+  objectPress["time"] = unixTime;
+  objectPress["value"] = getPressure();
 
-void update(char *payload)
-{
-  int contentLength = 0;
-  bool isValidContentType = false;
+  JsonObject objectHumid = payload_Data.createNestedObject("HU1");
+  objectHumid["time"] = unixTime;
+  objectHumid["value"] = getHumidity();
 
-  DynamicJsonDocument doc(200);
-  deserializeJson(doc, payload);
-  double FirmwareVer = doc["FirmwareVer"];
-  String url = doc["url"];
-  int port = 80;
+  JsonObject objectBatt = payload_Data.createNestedObject("BV1");
+  objectBatt["time"] = unixTime;
+  objectBatt["value"] = getBatteryVoltage();
 
-  rainflowMQTT.publish("update", 2, true, "", 0, false, 0); // Remove retained message
+  JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
+  objectFloodDepth["time"] = unixTime;
+  objectFloodDepth["value"] = getDepth();
 
-  if (FirmwareVer > FIRMWARE_VER)
-  {
-    String bin = getBinName(url);
-    String host = getHostName(url);
-
-    Serial.println("Connecting to: " + host);
-    if (client.connect(host.c_str(), port))
-    {
-      // Connection Succeed.
-      // Fecthing the bin
-      Serial.println("Fetching Bin: " + bin);
-
-      // Get the contents of the bin file
-      client.print(String("GET ") + bin + " HTTP/1.1\r\n" +
-                   "Host: " + host + "\r\n" +
-                   "Cache-Control: no-cache\r\n" +
-                   "Connection: close\r\n\r\n");
-
-      unsigned long timeout = millis();
-
-      while (client.available() == 0)
-      {
-        if (millis() - timeout > 5000)
-        {
-          Serial.println("Client Timeout !");
-          client.stop();
-          return;
-        }
-      }
-      while (client.available())
-      {
-        // read line till /n
-        String line = client.readStringUntil('\n');
-        // remove space, to check if the line is end of headers
-        line.trim();
-
-        // if the the line is empty,
-        // this is end of headers
-        // break the while and feed the
-        // remaining `client` to the
-        // Update.writeStream();
-        if (!line.length())
-        {
-          //headers ended
-          break; // and get the OTA started
-        }
-
-        // Check if the HTTP Response is 200
-        // else break and Exit Update
-        if (line.startsWith("HTTP/1.1"))
-        {
-          if (line.indexOf("200") < 0)
-          {
-            Serial.println("Got a non 200 status code from server. Exiting OTA Update.");
-            break;
-          }
-        }
-
-        // extract headers here
-        // Start with content length
-        if (line.startsWith("Content-Length: "))
-        {
-          contentLength = atoi((getHeaderValue(line, "Content-Length: ")).c_str());
-          Serial.println("Got " + String(contentLength) + " bytes from server");
-        }
-
-        // Next, the content type
-        if (line.startsWith("Content-Type: "))
-        {
-          String contentType = getHeaderValue(line, "Content-Type: ");
-          Serial.println("Got " + contentType + " payload.");
-          if (contentType == "application/octet-stream")
-          {
-            isValidContentType = true;
-          }
-        }
-      }
-    }
-    else
-    {
-      // Connect to S3 failed
-      // May be try?
-      // Probably a choppy network?
-      Serial.println("Connection to " + host + " failed. Please check your setup");
-      // retry??
-    }
-
-    // Check what is the contentLength and if content type is `application/octet-stream`
-    Serial.println("contentLength : " + String(contentLength) + ", isValidContentType : " + String(isValidContentType));
-
-    // check contentLength and content type
-    if (contentLength && isValidContentType)
-    {
-      // Check if there is enough to OTA Update
-      bool canBegin = Update.begin(contentLength);
-      if (canBegin)
-      {
-        Serial.println("Begin OTA. This may take 2 - 5 mins to complete. Things might be quite for a while.. Patience!");
-        size_t written = Update.writeStream(client);
-
-        if (written == contentLength)
-        {
-          Serial.println("Written : " + String(written) + " successfully");
-        }
-        else
-        {
-          Serial.println("Written only : " + String(written) + "/" + String(contentLength) + ". Retry?");
-          // retry??
-        }
-
-        if (Update.end())
-        {
-          Serial.println("OTA done!");
-          if (Update.isFinished())
-          {
-            Serial.println("Update successfully completed. Rebooting.");
-            ESP.restart();
-          }
-          else
-          {
-            Serial.println("Update not finished? Something went wrong!");
-          }
-        }
-        else
-        {
-          Serial.println("Error Occurred. Error #: " + String(Update.getError()));
-        }
-      }
-      else
-      {
-        // not enough space to begin OTA
-        // Understand the partitions and
-        // space availability
-        Serial.println("Not enough space to begin OTA.");
-        client.flush();
-      }
-    }
-    else
-    {
-      Serial.println("There was no content in the response");
-      client.flush();
-    }
-  }
+  serializeJson(payloadData, payloadBuffer);
+  topic = "RAFT_Data";
+  len = strlen(payloadBuffer.c_str());                                                 // Calculates Payload Size
+  rainflowMQTT.publish(topic.c_str(), 2, true, payloadBuffer); // Publishes payload to server
+  DEBUG_PRINT("Published @ " + String(topic) + "\n \"" + String(payloadBuffer) + "\"");
+  DEBUG_PRINT("payloadData Mem:" + String(payloadData.memoryUsage()));
+  wait(2000);
 }
 
 void onMqttConnect(bool sessionPresent)
 {
   DEBUG_PRINT("MQTT Connected. Session present:" + String(sessionPresent));
+  rainflowMQTT.subscribe("inbox", 2);
 }
 
-void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
+void onMqttDisconnect(int8_t reason)
 {
   DEBUG_PRINT("MQTT Disconnected.");
   // Serial.println("Disconnected from MQTT.");
@@ -832,16 +724,16 @@ void onMqttUnsubscribe(uint16_t packetId)
   DEBUG_PRINT("Unsubscribe acknowledged. PacketID:" + String(packetId));
 }
 
-void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
-{
-  DEBUG_PRINT("Message Received. ");
-  DEBUG_PRINT("Topic: " + String(topic));
-  DEBUG_PRINT("Payload: " + String(payload));
+//void onMqttMessage(const char* topic, uint8_t* payload, struct PANGO_PROPS props, size_t len, size_t index, size_t total)
+//{
+//  DEBUG_PRINT("Published Received. ");
+//  DEBUG_PRINT("Topic" + String(topic));
+//  DEBUG_PRINT("Payload" + String(payload));
+//}
 
-  if (String(topic) == "update")
-  {
-    update(payload);
-  }
+void onMqttMessage(const char* topic, uint8_t* payload, struct PANGO_PROPS props, size_t len, size_t index, size_t total) {
+  Serial.printf("T=%u Message %s qos%d dup=%d retain=%d len=%d",millis(),topic,props.qos,props.dup,props.retain,len);
+  PANGO::dumphex(payload,len,16);
 }
 
 void onMqttPublish(uint16_t packetId)
@@ -929,7 +821,6 @@ void mode_BatterySaver()
   currentMode = 2;
 }
 
-//* Sleep Related Functions
 void sleep(int time_to_sleep)
 {
   //esp_sleep_enable_ext0_wakeup(GPIO_NUM_21, ESP_EXT1_WAKEUP_ALL_LOW:);
@@ -950,19 +841,19 @@ void print_wakeup_reason()
 
   switch (wakeup_reason)
   {
-  case ESP_SLEEP_WAKEUP_EXT0:
-    DEBUG_PRINT("Wakeup caused by external signal using RTC_IO");
-    break;
-  case ESP_SLEEP_WAKEUP_EXT1:
-    DEBUG_PRINT("Wakeup caused by external signal using RTC_CNTL");
-    break;
-  case ESP_SLEEP_WAKEUP_TIMER:
-    DEBUG_PRINT("Wakeup caused by timer");
-    break;
-  default:
-    DEBUG_PRINT("Wakeup was not caused by deep sleep:");
-    DEBUG_PRINT(String(wakeup_reason));
-    break;
+    case ESP_SLEEP_WAKEUP_EXT0:
+      DEBUG_PRINT("Wakeup caused by external signal using RTC_IO");
+      break;
+    case ESP_SLEEP_WAKEUP_EXT1:
+      DEBUG_PRINT("Wakeup caused by external signal using RTC_CNTL");
+      break;
+    case ESP_SLEEP_WAKEUP_TIMER:
+      DEBUG_PRINT("Wakeup caused by timer");
+      break;
+    default:
+      DEBUG_PRINT("Wakeup was not caused by deep sleep:");
+      DEBUG_PRINT(String(wakeup_reason));
+      break;
   }
 }
 
@@ -975,119 +866,9 @@ void wait(unsigned long interval)
   }
 }
 
-void dataPublish()
-{
-  DynamicJsonDocument payloadData(1024);
-  String payloadBuffer;
-  String topic;
-  int len;
-
-  payloadData["data_type"] = "event";
-  payloadData["stream_id"] = streamIDData;
-
-  DEBUG_PRINT("Retrieving data.");
-  String unixTime = getUnixTime();
-  DEBUG_PRINT("Current time: " + String(unixTime));
-  JsonObject payload_Data = payloadData.createNestedObject("data");
-  JsonObject objectLatitude = payload_Data.createNestedObject("LAT1");
-  objectLatitude["time"] = unixTime;
-  objectLatitude["value"] = gps.location.lat();
-
-  JsonObject objectLongitude = payload_Data.createNestedObject("LNG1");
-  objectLongitude["time"] = unixTime;
-  objectLongitude["value"] = gps.location.lng();
-
-  JsonObject objectAltitude = payload_Data.createNestedObject("ALT1");
-  objectAltitude["time"] = unixTime;
-  objectAltitude["value"] = getAltitude();
-
-  JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
-  objectRainRate["time"] = unixTime;
-  objectRainRate["value"] = rainfallRate();
-
-  JsonObject objectRainAmount = payload_Data.createNestedObject("RA1");
-  objectRainAmount["time"] = unixTime;
-  objectRainAmount["value"] = rainfallAmount();
-
-  JsonObject objectRainRate2 = payload_Data.createNestedObject("RR2");
-  objectRainRate2["time"] = unixTime;
-  objectRainRate2["value"] = rainfallRate2();
-
-  JsonObject objectRainAmount2 = payload_Data.createNestedObject("RA2");
-  objectRainAmount2["time"] = unixTime;
-  objectRainAmount2["value"] = rainfallAmount2();
-
-  JsonObject objectTemp = payload_Data.createNestedObject("TMP1");
-  objectTemp["time"] = unixTime;
-  objectTemp["value"] = getTemperature();
-
-  JsonObject objectPress = payload_Data.createNestedObject("PR1");
-  objectPress["time"] = unixTime;
-  objectPress["value"] = getPressure();
-
-  JsonObject objectHumid = payload_Data.createNestedObject("HU1");
-  objectHumid["time"] = unixTime;
-  objectHumid["value"] = getHumidity();
-
-  JsonObject objectBatt = payload_Data.createNestedObject("BV1");
-  objectBatt["time"] = unixTime;
-  objectBatt["value"] = getBatteryVoltage();
-
-  JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
-  objectFloodDepth["time"] = unixTime;
-  objectFloodDepth["value"] = getDepth();
-
-  serializeJson(payloadData, payloadBuffer);
-  topic = "RAFT_Data";
-  len = strlen(payloadBuffer.c_str());                                                 // Calculates Payload Size
-  rainflowMQTT.publish(topic.c_str(), 2, false, payloadBuffer.c_str(), len, false, 0); // Publishes payload to server
-  DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
-  DEBUG_PRINT("payloadData Mem:" + String(payloadData.memoryUsage()));
-  wait(2000);
-}
-
-void infoPublish()
-{
-  DynamicJsonDocument payloadData(1024);
-  String payloadBuffer;
-  String topic;
-  int len;
-
-  payloadData["data_type"] = "event";
-  payloadData["stream_id"] = streamIDInfo;
-
-  DEBUG_PRINT("Retrieving data.");
-  String unixTime = getUnixTime();
-  DEBUG_PRINT("Current time: " + String(unixTime));
-  JsonObject payload_Data = payloadData.createNestedObject("data");
-  JsonObject objectLatitude = payload_Data.createNestedObject("FirmwareVer");
-  objectLatitude["time"] = unixTime;
-  objectLatitude["value"] = FIRMWARE_VER;
-
-  JsonObject objectLongitude = payload_Data.createNestedObject("bootCount");
-  objectLongitude["time"] = unixTime;
-  objectLongitude["value"] = bootCount;
-
-  JsonObject objectAltitude = payload_Data.createNestedObject("tipCount");
-  objectAltitude["time"] = unixTime;
-  objectAltitude["value"] = tipCount;
-
-  JsonObject objectRainRate = payload_Data.createNestedObject("Height");
-  objectRainRate["time"] = unixTime;
-  objectRainRate["value"] = medianGetHeight;
-
-  serializeJson(payloadData, payloadBuffer);
-  topic = "RAFT_Info";
-  len = strlen(payloadBuffer.c_str());                                                 // Calculates Payload Size
-  rainflowMQTT.publish(topic.c_str(), 2, false, payloadBuffer.c_str(), len, false, 0); // Publishes payload to server
-  DEBUG_PRINT("Published @ " + String(topic) + "\n" + String(payloadBuffer));
-  DEBUG_PRINT("payloadData Mem:" + String(payloadData.memoryUsage()));
-  wait(2000);
-}
-
 void publishData()
 {
-  indicatorLED1(true);
+  indicatorLED(true);
   bool connected = false;
 
 #ifdef MODEM_WIFI
@@ -1112,19 +893,7 @@ void publishData()
     rainflowMQTT.connect();
     wait(5000);
     if (rainflowMQTT.connected())
-    {
       dataPublish();
-      infoPublish();
-    }
-
-    if (currentMode == 0)
-    {
-      rainflowMQTT.subscribe("inbox", 2);
-      rainflowMQTT.subscribe("update", 2);
-
-      wait(15000);
-    }
-
     rainflowMQTT.disconnect();
   }
 
@@ -1134,7 +903,7 @@ void publishData()
 #ifdef MODEM_GSM
 #endif
 
-  indicatorLED1(false);
+  indicatorLED(false);
 }
 
 void indicatorLED(bool status)
@@ -1148,20 +917,6 @@ void indicatorLED(bool status)
   {
     digitalWrite(LEDPin, LOW);
     pinMode(LEDPin, INPUT);
-  }
-}
-
-void indicatorLED1(bool status)
-{
-  if (status == true)
-  {
-    pinMode(LEDPin1, OUTPUT);
-    digitalWrite(LEDPin1, HIGH);
-  }
-  if (status == false)
-  {
-    digitalWrite(LEDPin1, LOW);
-    pinMode(LEDPin1, INPUT);
   }
 }
 
@@ -1248,11 +1003,13 @@ void setup()
   rainflowMQTT.setClientId(clientID);
   rainflowMQTT.setCredentials(username, password);
   rainflowMQTT.setServer("rainflow.live", 1883);
+  rainflowMQTT.setCleanSession(true);
   rainflowMQTT.onConnect(onMqttConnect);
   rainflowMQTT.onDisconnect(onMqttDisconnect);
-  rainflowMQTT.onSubscribe(onMqttSubscribe);
-  rainflowMQTT.onUnsubscribe(onMqttUnsubscribe);
   rainflowMQTT.onMessage(onMqttMessage);
+  //  rainflowMQTT.onSubscribe(onMqttSubscribe);
+  //  rainflowMQTT.onUnsubscribe(onMqttUnsubscribe);
+  //  rainflowMQTT.onMessage(onMqttMessage);
   rainflowMQTT.onPublish(onMqttPublish);
 
   Runner.init();
