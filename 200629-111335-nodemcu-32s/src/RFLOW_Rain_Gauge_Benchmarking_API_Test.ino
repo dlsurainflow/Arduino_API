@@ -1068,6 +1068,10 @@ void infoPublish()
   objectLongitude["time"] = unixTime;
   objectLongitude["value"] = bootCount;
 
+  JsonObject objectLongitude = payload_Data.createNestedObject("RGDate");
+  objectLongitude["time"] = unixTime;
+  objectLongitude["value"] = rainGaugeDate;
+
   JsonObject objectAltitude = payload_Data.createNestedObject("tipCount");
   objectAltitude["time"] = unixTime;
   objectAltitude["value"] = tipCount;
