@@ -33,7 +33,7 @@ float medianDepth = 0;
 long lastDetectedTipMillisUS = 0;
 bool heightWrite = false;
 // int buttonState = 0;
-const int datasizeUS = 30;
+const int datasizeUS = 15;
 MedianFilter<int> medianFilter(3);
 
 RTC_DATA_ATTR int bootCount = 0;
@@ -454,6 +454,13 @@ void setHeight()
   delay(50);
   setHeightTask.disable();
   DEBUG_PRINT("Succesfully saved height of " + String(medianGetHeight) + " in memory.");
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
 }
 
 float getDepth()
@@ -989,50 +996,61 @@ void dataPublish()
   String unixTime = getUnixTime();
   DEBUG_PRINT("Current time: " + String(unixTime));
   JsonObject payload_Data = payloadData.createNestedObject("data");
+  DEBUG_PRINT("Retrieving Latitude.");
   JsonObject objectLatitude = payload_Data.createNestedObject("LAT1");
   objectLatitude["time"] = unixTime;
   objectLatitude["value"] = gps.location.lat();
 
+  DEBUG_PRINT("Retrieving Longitude.");
   JsonObject objectLongitude = payload_Data.createNestedObject("LNG1");
   objectLongitude["time"] = unixTime;
   objectLongitude["value"] = gps.location.lng();
 
+  DEBUG_PRINT("Retrieving Altitude.");
   JsonObject objectAltitude = payload_Data.createNestedObject("ALT1");
   objectAltitude["time"] = unixTime;
   objectAltitude["value"] = getAltitude();
 
+  DEBUG_PRINT("Retrieving Rain Rate.");
   JsonObject objectRainRate = payload_Data.createNestedObject("RR1");
   objectRainRate["time"] = unixTime;
   objectRainRate["value"] = rainfallRate();
 
+  DEBUG_PRINT("Retrieving Rain Amount.");
   JsonObject objectRainAmount = payload_Data.createNestedObject("RA1");
   objectRainAmount["time"] = unixTime;
   objectRainAmount["value"] = rainfallAmount();
 
-  JsonObject objectRainRate2 = payload_Data.createNestedObject("RR2");
-  objectRainRate2["time"] = unixTime;
-  objectRainRate2["value"] = rainfallRate2();
+  // DEBUG_PRINT("Retrieving Rain Rate 2.");
+  // JsonObject objectRainRate2 = payload_Data.createNestedObject("RR2");
+  // objectRainRate2["time"] = unixTime;
+  // objectRainRate2["value"] = rainfallRate2();
 
-  JsonObject objectRainAmount2 = payload_Data.createNestedObject("RA2");
-  objectRainAmount2["time"] = unixTime;
-  objectRainAmount2["value"] = rainfallAmount2();
+  // JsonObject objectRainAmount2 = payload_Data.createNestedObject("RA2");
+  // objectRainAmount2["time"] = unixTime;
+  // objectRainAmount2["value"] = rainfallAmount2();
 
+  DEBUG_PRINT("Retrieving Temperature.");
   JsonObject objectTemp = payload_Data.createNestedObject("TMP1");
   objectTemp["time"] = unixTime;
   objectTemp["value"] = getTemperature();
 
+  DEBUG_PRINT("Retrieving Pressure.");
   JsonObject objectPress = payload_Data.createNestedObject("PR1");
   objectPress["time"] = unixTime;
   objectPress["value"] = getPressure();
 
+  DEBUG_PRINT("Retrieving Humidity.");
   JsonObject objectHumid = payload_Data.createNestedObject("HU1");
   objectHumid["time"] = unixTime;
   objectHumid["value"] = getHumidity();
 
+  DEBUG_PRINT("Retrieving Battery Votlage.");
   JsonObject objectBatt = payload_Data.createNestedObject("BV1");
   objectBatt["time"] = unixTime;
   objectBatt["value"] = getBatteryVoltage();
 
+  DEBUG_PRINT("Retrieving Flood Depth.");
   JsonObject objectFloodDepth = payload_Data.createNestedObject("FD1");
   objectFloodDepth["time"] = unixTime;
   objectFloodDepth["value"] = getDepth();
@@ -1056,29 +1074,29 @@ void infoPublish()
   payloadData["data_type"] = "event";
   payloadData["stream_id"] = streamIDInfo;
 
-  DEBUG_PRINT("Retrieving data.");
+  DEBUG_PRINT("Retrieving info.");
   String unixTime = getUnixTime();
   DEBUG_PRINT("Current time: " + String(unixTime));
   JsonObject payload_Data = payloadData.createNestedObject("data");
-  JsonObject objectLatitude = payload_Data.createNestedObject("FirmwareVer");
-  objectLatitude["time"] = unixTime;
-  objectLatitude["value"] = FIRMWARE_VER;
+  JsonObject objectFirmware = payload_Data.createNestedObject("FirmwareVer");
+  objectFirmware["time"] = unixTime;
+  objectFirmware["value"] = FIRMWARE_VER;
 
-  JsonObject objectLongitude = payload_Data.createNestedObject("bootCount");
-  objectLongitude["time"] = unixTime;
-  objectLongitude["value"] = bootCount;
+  JsonObject objectBoot = payload_Data.createNestedObject("bootCount");
+  objectBoot["time"] = unixTime;
+  objectBoot["value"] = bootCount;
 
-  JsonObject objectLongitude = payload_Data.createNestedObject("RGDate");
-  objectLongitude["time"] = unixTime;
-  objectLongitude["value"] = rainGaugeDate;
+  JsonObject objectDate = payload_Data.createNestedObject("RGDate");
+  objectDate["time"] = unixTime;
+  objectDate["value"] = rainGaugeDate;
 
-  JsonObject objectAltitude = payload_Data.createNestedObject("tipCount");
-  objectAltitude["time"] = unixTime;
-  objectAltitude["value"] = tipCount;
+  JsonObject objectTip = payload_Data.createNestedObject("tipCount");
+  objectTip["time"] = unixTime;
+  objectTip["value"] = tipCount;
 
-  JsonObject objectRainRate = payload_Data.createNestedObject("Height");
-  objectRainRate["time"] = unixTime;
-  objectRainRate["value"] = medianGetHeight;
+  JsonObject objectHeight = payload_Data.createNestedObject("Height");
+  objectHeight["time"] = unixTime;
+  objectHeight["value"] = medianGetHeight;
 
   serializeJson(payloadData, payloadBuffer);
   topic = "RAFT_Info";
@@ -1228,6 +1246,7 @@ void setup()
   attachUS();
   if (bootCount == 1)
   {
+    wait(5000);
     getHeight();
     if (heightWrite == true)
       setHeight();

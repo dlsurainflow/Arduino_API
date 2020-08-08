@@ -25,8 +25,8 @@
 
 //* -- GPS MODULE DEFINITIONS
 #define GPS_BAUD 9600 // GSM/GPRS Module TX Pin
-#define GPS_RX 25     // GSM/GPRS Module RX Pin
-#define GPS_TX 26     // GSM/GPRS Module TX Pin
+#define GPS_RX 26     // GSM/GPRS Module RX Pin
+#define GPS_TX 27     // GSM/GPRS Module TX Pin
 
 //* -- RAIN GAUGE DEFINITIONS
 #define rainGaugePin 35              // Rain Guage 1 Pin
