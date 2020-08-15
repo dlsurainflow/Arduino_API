@@ -1,6 +1,8 @@
 #include "settings.h"
 #include <Arduino.h>
-#include <Adafruit_BME280.h>
+// #include <Adafruit_BME280.h>
+#include "BME280/BME280I2C.h"
+#include "BME280/EnvironmentCalculations.h"
 #include <AsyncMqttClient.h>
 #include <HardwareSerial.h>
 #include <TaskScheduler.h>
@@ -15,6 +17,7 @@
 #include "EEPROM.h"
 #include <Update.h>
 #include <WiFi.h>
+#include <Wire.h>
 
 #define FIRMWARE_VER 1.0
 
@@ -50,7 +53,17 @@ RTC_DATA_ATTR int currentMode = 0;
 
 WiFiClient client;
 AsyncMqttClient rainflowMQTT; // Instance Creation of MQTT Client
-Adafruit_BME280 bme;          // I2C
+// Adafruit_BME280 bme;          // I2C
+BME280I2C::Settings settings(
+    BME280::OSR_X1,
+    BME280::OSR_X1,
+    BME280::OSR_X1,
+    BME280::Mode_Forced,
+    BME280::StandbyTime_1000ms,
+    BME280::Filter_16,
+    BME280::SpiEnable_False,
+    BME280I2C::I2CAddr_0x76);
+BME280I2C bme(settings);
 
 void publishData();
 void modeCheck();
@@ -273,7 +286,8 @@ void connectWifi(const char *ssid, const char *password)
   WiFi.begin(ssid, password);
   DEBUG_PRINT("Connecting to " + String(ssid));
 
-  while (WiFi.status() != WL_CONNECTED)
+  unsigned long start = millis();
+  while ((WiFi.status() != WL_CONNECTED) && ((millis() - start) >= 30000))
   {
     DEBUG_PRINT("Attempting to connect...");
     wait(500);
@@ -281,11 +295,13 @@ void connectWifi(const char *ssid, const char *password)
     if ((++i % 16) == 0)
     {
       DEBUG_PRINT("Still attempting to connect...");
-      return;
     }
+
+    if ((millis() - start) >= 30000) // 30s timeout
+      break;
   }
 
-  wait(10000);
+  wait(5000);
 }
 
 void disconnectWifi()
@@ -363,11 +379,11 @@ void GPS_maxPerformanceMode()
 static void smartDelay(unsigned long ms)
 {
   unsigned long start = millis();
-  do
+  while (millis() - start < ms)
   {
     while (SerialGPS.available())
       gps.encode(SerialGPS.read());
-  } while (millis() - start < ms);
+  }
 }
 
 ///////////////////////// END GPS  ///////////////////////
@@ -429,7 +445,7 @@ void getHeight()
     // timeMean += timeCount;
 
     // DEBUG_PRINT(raftHeight);
-    DEBUG_PRINT("getDepth: " + String(i) + " - " + String(medianGetHeight));
+    DEBUG_PRINT("getHeight: " + String(i) + " - " + String(medianGetHeight));
     wait(1000);
   }
   // DEBUG_PRINT("Current Height: " + String(medianGetHeight));
@@ -469,6 +485,21 @@ float getDepth()
   // medianHeight = EEPROM.read(0);
   medianHeight = EEPROM.readFloat(0);
   DEBUG_PRINT("Median Height: " + String(medianHeight));
+
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+  wait(100);
+  indicatorLED(false);
+  wait(100);
+  indicatorLED(true);
+
   int i = 0, counter = 0;
   for (; i < datasizeUS;)
   {
@@ -514,6 +545,7 @@ float getDepth()
     wait(1000);
   }
   floodDepth = medianDepth;
+  indicatorLED(false);
 
   DEBUG_PRINT("Flood Depth: " + String(medianDepth));
   if (floodDepth < 0)
@@ -572,38 +604,55 @@ double ReadVoltage(byte pin)
 void attachBarometer()
 {
   DEBUG_PRINT("Attaching Barometer.");
-  if (!bme.begin(0x76))
+  Wire.begin();
+  unsigned long status = millis();
+  while ((millis() - status < 5000) && !bme.begin())
   {
-    DEBUG_PRINT("Could not find a valid BME280 sensor, check wiring!");
-    return;
+    DEBUG_PRINT("Connecting Barometer.");
   }
-  bme.setSampling(Adafruit_BME280::MODE_FORCED,
-                  Adafruit_BME280::SAMPLING_X1, // Temperautre
-                  Adafruit_BME280::SAMPLING_X1, // Pressure
-                  Adafruit_BME280::SAMPLING_X1, // Humidity
-                  Adafruit_BME280::FILTER_OFF);
+
+  switch (bme.chipModel())
+  {
+  case BME280::ChipModel_BME280:
+    DEBUG_PRINT("Found BME280 sensor!");
+    break;
+  case BME280::ChipModel_BMP280:
+    DEBUG_PRINT("Found BMP280 sensor! No Humidity available.");
+    break;
+  default:
+    DEBUG_PRINT("Found UNKNOWN sensor! Error!");
+  }
 }
 
 float getAltitude()
 {
-  return bme.readAltitude(SEALEVELPRESSURE_HPA);
+  return EnvironmentCalculations::Altitude(getTemperature(), EnvironmentCalculations::AltitudeUnit_Meters, SEALEVELPRESSURE_HPA, getTemperature(), EnvironmentCalculations::TempUnit_Celsius);
 }
 
 float getPressure()
 {
-  return (bme.readPressure() / 100.0F);
+  return (bme.pres() / 100.0F);
 }
 
 float getTemperature()
 {
-  return bme.readTemperature();
+  return bme.temp();
 }
 
 float getHumidity()
 {
-  return bme.readHumidity();
+  return bme.hum();
 }
 
+float getDewPoint()
+{
+  return EnvironmentCalculations::DewPoint(getTemperature(), getHumidity(), EnvironmentCalculations::TempUnit_Celsius);
+}
+
+float getHeadIndex()
+{
+  return EnvironmentCalculations::HeatIndex(getTemperature(), getHumidity(), EnvironmentCalculations::TempUnit_Celsius);
+}
 ///////////////////////// END BAROMETRIC SENSOR ///////////////////////
 ///////////////////////// MQTT ///////////////////////
 //* FOTA Functions
@@ -1045,6 +1094,16 @@ void dataPublish()
   objectHumid["time"] = unixTime;
   objectHumid["value"] = getHumidity();
 
+  DEBUG_PRINT("Retrieving DewPoint.");
+  JsonObject objectDew = payload_Data.createNestedObject("DP1");
+  objectDew["time"] = unixTime;
+  objectDew["value"] = getDewPoint();
+
+  DEBUG_PRINT("Retrieving Heat Index.");
+  JsonObject objectHeat = payload_Data.createNestedObject("HI1");
+  objectHeat["time"] = unixTime;
+  objectHeat["value"] = getHeadIndex();
+
   DEBUG_PRINT("Retrieving Battery Votlage.");
   JsonObject objectBatt = payload_Data.createNestedObject("BV1");
   objectBatt["time"] = unixTime;
@@ -1097,6 +1156,12 @@ void infoPublish()
   JsonObject objectHeight = payload_Data.createNestedObject("Height");
   objectHeight["time"] = unixTime;
   objectHeight["value"] = medianGetHeight;
+
+#ifdef MODEM_WIFI
+  JsonObject objectWifi = payload_Data.createNestedObject("wifiRSSI");
+  objectWifi["time"] = unixTime;
+  objectWifi["value"] = getRSSI(ssid);
+#endif
 
   serializeJson(payloadData, payloadBuffer);
   topic = "RAFT_Info";
