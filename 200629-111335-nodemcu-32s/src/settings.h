@@ -17,44 +17,63 @@
 #define GSM_RX 17             // GSM/GPRS Module RX Pin
 #define GSM_TX 16             // GSM/GPRS Module TX Pin
 
-//* -- ULTRASONIC SENSOR DEFINITIONS [FOR FLOOD DEPTH]
+//* -- ULTRASONIC SENSOR SETTINGS [FOR FLOOD DEPTH]
 #define US_RX 14          // Ultrasonic Module RX Pin
 #define US_TX 12          // Ultrasonic Module TX
 #define US_MAXHEIGHT 600  // Ultrasonic Max Height (cm)
 #define US_resetButton 13 // Reset Height Button
 
-//* -- GPS MODULE DEFINITIONS
+//* -- GPS MODULE SETTINGS
 #define GPS_BAUD 9600 // GSM/GPRS Module TX Pin
 #define GPS_RX 26     // GSM/GPRS Module RX Pin
 #define GPS_TX 27     // GSM/GPRS Module TX Pin
 
-//* -- RAIN GAUGE DEFINITIONS
-#define rainGaugePin 35              // Rain Guage 1 Pin
-#define rainGaugePin2 32             // Rain Gauge 2
-#define GPIO_PIN_BITMASK 0x900004000 // (2^35 + 2^32)Hex
-#define tipAmount 0.3636             // 0.3636 mm of rainfall per tip
-#define tipAmount2 0.2555            // S
+//* -- RAIN GAUGE SETTINGS
+#define GPIO_PIN_BITMASK 0x800004000 // GPIO 35 (2^35 in Hex)
+#define rainGaugePin 35              // Rain Guage Pin
+#define tipAmount 0.3636             //  This has not been calibrated yet as it will depend on your printing dimensions.
+/* 
+To calculate the tipAmount (amount of rainfall per tip), calibrate the rain gauge by slowly putting 100mL of water into the rain gauge. Then
+tipAmount = (100mL/#ofTips)/(pi*r*r)
+Example:
+Rain gauge tips 38 times with 100mL of water.
+Rain gauge radius is 5.72 cm.
+tipAmount  = (100mL/38tips)/(pi*5.72cm*5.72cm)
+tipAmount = 0.0256cm/tip or 0.256mm 
 
-//* -- BAROMETER DEFINITIONS
-#define SEALEVELPRESSURE_HPA (1013.25) // Change to mean sea level pressure in your area
+NOTE: tipAmount should be in millimeters (mm)
+*/
 
+//* -- ULTRASONIC SENSOR SETTINGS
+const int datasizeUS = 15;
+
+//* -- BAROMETER SETTINGS
+#define SEALEVELPRESSURE_HPA (1013.25) // Standard sea level pressure
+
+//* Communications Protocol to Use
 #ifdef MODEM_GSM
 #include <TinyGsmClient.h>
+#ifdef DEBUG_MODE
+#define DUMP_AT_COMMANDS
 #endif
+#endif
+
 #ifdef MODEM_WIFI
 #include <WiFi.h>
 #endif
 
-//* WiFi Access Point Details
+//* WiFi Access Point Settings
 const char *ssid = "Hidden Network";
 const char *wifi_pass = "mmbmh15464";
 
-//* GSM Internet Details
-const char *apn = "smartlte";
+//* GSM Internet Settings
+const char *apn = "smartlte"; // For Smart Telecom
+//const char *apn = "internet.globe.com.ph";  // For Globe Telecom
 const char *gprsUser = "";
 const char *gprsPass = "";
+#define GATEWAY_NUMBER "+639XXXXXXXXX";
 
-//* RAFT Details
+//* RAFT Credentials
 const char *clientID = "bbb1691accc836be0958909cf8426e22b246";
 const char *username = "bbb1691accc836be0958909cf8426e22b246";
 const char *password = "aeff9fb2b53b2eba1b2ca8b218514615f995";
